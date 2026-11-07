@@ -1,0 +1,27 @@
+# Segredos: só o modelo vai para o git
+.env
+.env.*
+!.env.example
+
+# Dumps e backups de banco (podem ter dados pessoais e financeiros)
+*.sql.gz
+*.dump
+*-dump.sql
+dump*.sql
+backup*/
+
+# Logs, backups e temporários
+*.log
+*.bak
+*.old
+*.orig
+*.swp
+*.tmp
+*~
+
+# Sistema e editores
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

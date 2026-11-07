@@ -1,0 +1,23 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        DOCKER_GID: "988" # grupo docker do servidor: getent group docker
+    container_name: ml-app
+    ports:
+      - "51014:80"
+    env_file:
+      - .env
+    environment:
+      DOCKER_CONFIG: /tmp/docker-config # evita aviso do CLI sobre /root/.docker nos logs
+    volumes:
+      - ./public:/var/www/html/public:ro
+      - ./src:/var/www/html/src:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
+      - dados:/var/lib/ml-app
+    restart: unless-stopped
+
+volumes:
+  dados:
