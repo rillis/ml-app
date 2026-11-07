@@ -40,11 +40,4 @@ O `DOCKER_GID` do `docker-compose.yml` precisa ser o grupo dono do `/var/run/doc
 docker compose up -d --build
 ```
 
-`public/` e `src/` são montados como somente leitura, então mudanças em PHP entram no ar na hora. Só é preciso rebuild ao mudar o `Dockerfile`. Sessões e o controle de tentativas de login ficam no volume `dados` e sobrevivem à recriação do container.
-
-## Segurança
-
-- **Login:** depois de 5 falhas em 15 min, o IP fica bloqueado por 5 min (`src/login_limite.php`). O IP real vem do `CF-Connecting-IP` só quando a conexão chega pelo túnel da Cloudflare.
-- **Cookie de sessão:** `HttpOnly` e `SameSite=Lax`. Ações que gravam dados exigem POST.
-- **docker.sock montado:** o container pode controlar o Docker do host. Foi escolha consciente, para ler os logs do `ml-jrf` com um container só. Qualquer falha no PHP vira acesso ao host, então trate o código daqui com esse cuidado.
-- **Dados de compradores:** textos vindos do ML são escritos por compradores. Sempre passe por `dash_h()` / `htmlspecialchars` ao exibir.
+`public/` e `src/` são montados como somente leitura, então mudanças em PHP entram no ar na hora. Só é preciso rebuild ao mudar o `Dockerfile`. As sessões ficam no volume `dados` e sobrevivem à recriação do container.
