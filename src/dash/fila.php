@@ -147,8 +147,8 @@ function fila_html_atencao(array $jobs): string
                 <td class="pr-2"><?= fila_badge($j['status']) ?><span class="block text-xs text-gray-500 mt-1"><?= (int)$j['attempts'] ?> tentativa(s) · <?= dash_h($espera) ?></span></td>
                 <td class="pr-2 text-xs text-red-300 break-all" title="<?= dash_h($j['last_error']) ?>"><?= dash_h(mb_strimwidth($j['last_error'] ?? '', 0, 160, '…')) ?></td>
                 <td class="text-right whitespace-nowrap">
-                    <button type="button" data-acao="reprocessar" data-id="<?= (int)$j['id'] ?>" class="px-2 py-1 rounded text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white"><?= $j['status'] === 'failed' ? 'Reprocessar' : 'Tentar agora' ?></button>
-                    <button type="button" data-acao="descartar" data-id="<?= (int)$j['id'] ?>" class="px-2 py-1 rounded text-xs font-semibold bg-gray-700 hover:bg-gray-600 text-gray-200">Descartar</button>
+                    <button type="button" data-acao="reprocessar" data-id="<?= (int)$j['id'] ?>" class="px-3 py-2 md:px-2 md:py-1 rounded text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white"><?= $j['status'] === 'failed' ? 'Reprocessar' : 'Tentar agora' ?></button>
+                    <button type="button" data-acao="descartar" data-id="<?= (int)$j['id'] ?>" class="px-3 py-2 md:px-2 md:py-1 rounded text-xs font-semibold bg-gray-700 hover:bg-gray-600 text-gray-200">Descartar</button>
                 </td>
             </tr>
         <?php endforeach; ?>

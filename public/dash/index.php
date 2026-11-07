@@ -43,14 +43,14 @@ $filtros = [
         }
     </style>
 </head>
-<!-- h-screen, flex e overflow-hidden travam a altura no tamanho da janela -->
-<body class="bg-gray-900 text-gray-100 p-8 font-sans h-screen flex flex-col overflow-hidden">
+<!-- No computador (md+), h-screen e overflow-hidden travam a altura na janela; no celular a página rola normalmente -->
+<body class="bg-gray-900 text-gray-100 p-4 sm:p-8 font-sans min-h-screen md:h-screen flex flex-col md:overflow-hidden">
     <?php require __DIR__ . '/../../src/nav.php'; ?>
 
     <!-- flex-shrink-0 e mb-6 movidos para uma div pai para agrupar o título e o subtítulo -->
     <div class="mb-6 flex-shrink-0">
-        <h1 class="text-3xl font-bold text-gray-100">Painel de Operações
-            <a href="fila/" class="ml-3 align-middle px-3 py-1 rounded-lg text-sm font-semibold bg-gray-800 border border-gray-700 text-gray-300 hover:border-blue-500 hover:text-white transition-colors">🔔 Fila do webhook</a>
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-100 flex flex-wrap items-center gap-x-3 gap-y-2">Painel de Operações
+            <a href="fila/" class="px-3 py-2 sm:py-1 rounded-lg text-sm font-semibold bg-gray-800 border border-gray-700 text-gray-300 hover:border-blue-500 hover:text-white transition-colors">🔔 Fila do webhook</a>
         </h1>
         <p class="text-sm text-gray-400 mt-1">
             <span id="ultimoEvento"><?= dash_h($lastEventText) ?></span>
@@ -62,12 +62,12 @@ $filtros = [
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
 
         <!-- Coluna 1: Mercado Livre -->
-        <div class="bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col min-h-0">
+        <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-lg flex flex-col min-h-0 h-[75vh] md:h-auto">
             <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2 text-blue-400 flex-shrink-0">Últimos Eventos</h2>
 
             <div id="filtrosEventos" class="flex flex-wrap gap-2 mb-3 flex-shrink-0" role="group" aria-label="Filtrar eventos por tipo">
                 <?php foreach ($filtros as $chave => $nome): ?>
-                    <button type="button" data-filtro="<?= $chave ?>" aria-pressed="false" class="px-3 py-1 rounded-full text-xs font-semibold transition-colors bg-gray-700 text-gray-300 hover:bg-gray-600">
+                    <button type="button" data-filtro="<?= $chave ?>" aria-pressed="false" class="px-3 py-2 md:py-1 rounded-full text-xs font-semibold transition-colors bg-gray-700 text-gray-300 hover:bg-gray-600">
                         <?= $nome ?> (<span data-contagem="<?= $chave ?>"><?= (int)$contagemEventos[$chave] ?></span>)
                     </button>
                 <?php endforeach; ?>
@@ -81,17 +81,23 @@ $filtros = [
         <div class="flex flex-col gap-6 min-h-0">
 
             <!-- Metade Superior: Boletos -->
-            <div class="bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col flex-1 min-h-0">
+            <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-lg flex flex-col flex-1 min-h-0 max-h-[60vh] md:max-h-none">
                 <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2 text-red-400 flex-shrink-0">Boletos (Próximos 15 dias)</h2>
 
                 <ul id="listaBoletos" class="space-y-3 flex-1 overflow-y-auto pr-2 scrollbar-dark"><?= dash_html_boletos($boletos) ?></ul>
             </div>
 
             <!-- Metade Inferior: Docker Logs -->
-            <div class="bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col flex-1 min-h-0">
-                <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2 text-green-400 flex-shrink-0">Logs: ml-jrf</h2>
+            <!-- No celular os logs começam recolhidos: o título vira botão para abrir -->
+            <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-lg flex flex-col md:flex-1 min-h-0">
+                <h2 class="text-xl font-semibold border-b border-gray-700 pb-2 text-green-400 flex-shrink-0">
+                    <button type="button" id="alternarLogs" aria-expanded="false" aria-controls="painelLogs" class="w-full flex items-center justify-between gap-3 text-left md:cursor-default py-1 md:py-0">
+                        Logs: ml-jrf
+                        <span class="md:hidden text-sm font-normal text-gray-400" data-rotulo>Mostrar ▾</span>
+                    </button>
+                </h2>
 
-                <div class="flex-1 overflow-y-auto pr-2 scrollbar-dark bg-gray-900 rounded p-3 text-xs text-gray-300 font-mono flex flex-col-reverse">
+                <div id="painelLogs" class="hidden md:flex mt-4 h-[60vh] md:h-auto flex-1 overflow-y-auto pr-2 scrollbar-dark bg-gray-900 rounded p-3 text-xs text-gray-300 font-mono flex-col-reverse">
                     <!-- flex-col-reverse faz o scroll ficar no final automaticamente -->
                     <pre id="logsJrf" class="whitespace-pre-wrap font-mono"><?= getLogsContent(); ?></pre>
                 </div>
@@ -190,6 +196,17 @@ $filtros = [
     }
 
     botoesFiltro.forEach(botao => botao.addEventListener('click', () => escolherFiltro(botao.dataset.filtro)));
+
+    // Logs recolhíveis no celular (no computador o painel fica sempre aberto pelo md:flex)
+    document.getElementById('alternarLogs').addEventListener('click', evento => {
+        if (window.matchMedia('(min-width: 768px)').matches) return;
+        const botao = evento.currentTarget;
+        const aberto = botao.getAttribute('aria-expanded') !== 'true';
+        botao.setAttribute('aria-expanded', String(aberto));
+        document.getElementById('painelLogs').classList.toggle('hidden', !aberto);
+        document.getElementById('painelLogs').classList.toggle('flex', aberto);
+        botao.querySelector('[data-rotulo]').textContent = aberto ? 'Ocultar ▴' : 'Mostrar ▾';
+    });
     const filtroSalvo = lerFiltroSalvo();
     if (botoesFiltro.some(b => b.dataset.filtro === filtroSalvo)) filtroAtual = filtroSalvo;
     aplicarFiltro();

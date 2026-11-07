@@ -11,7 +11,7 @@ $paginaContas = 'mes';
     <script src="/assets/tailwind.js"></script>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen p-8 font-sans selection:bg-blue-500 selection:text-white">
+<body class="bg-gray-900 text-gray-100 min-h-screen p-4 sm:p-8 font-sans selection:bg-blue-500 selection:text-white">
     <?php require __DIR__ . '/../../src/nav.php'; ?>
     <div class="max-w-3xl mx-auto">
         <?php require __DIR__ . '/../../src/contas/cabecalho.php'; ?>

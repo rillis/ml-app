@@ -25,7 +25,7 @@ function ler_file($file2) {
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
 </head>
 
-<body class="bg-gray-900 text-gray-100 min-h-screen p-8 font-sans selection:bg-blue-500 selection:text-white">
+<body class="bg-gray-900 text-gray-100 min-h-screen p-4 sm:p-8 font-sans selection:bg-blue-500 selection:text-white">
     <?php require __DIR__ . '/../../src/nav.php'; ?>
 
     <div class="max-w-5xl mx-auto">
@@ -249,8 +249,10 @@ function carregarHistorico() {
     });
 }
 
+// Atualiza a cada 5s só com a aba visível (antes era 1s, 2 requisições por segundo no celular)
 carregar();
-setInterval(carregar, 1000);
+setInterval(() => { if (!document.hidden) carregar(); }, 5000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) carregar(); });
 </script>
 
 </body>

@@ -22,7 +22,7 @@ $cards = [
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <script src="/assets/tailwind.js"></script>
 </head>
-<body class="bg-gray-900 text-gray-100 p-8 font-sans min-h-screen">
+<body class="bg-gray-900 text-gray-100 p-4 sm:p-8 font-sans min-h-screen">
     <?php require __DIR__ . '/../../../src/nav.php'; ?>
 
     <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
@@ -33,7 +33,7 @@ $cards = [
                 <span id="statusAtualizacao" class="ml-2 text-gray-500"></span>
             </p>
         </div>
-        <a href="/dash/" class="text-sm text-blue-400 hover:underline">← Voltar ao painel</a>
+        <a href="/dash/" class="py-2 text-sm text-blue-400 hover:underline">← Voltar ao painel</a>
     </div>
 
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
@@ -48,7 +48,7 @@ $cards = [
     <div class="bg-gray-800 p-6 rounded-lg shadow-lg mb-6">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4 border-b border-gray-700 pb-2">
             <h2 class="text-xl font-semibold text-red-400">Precisam de atenção</h2>
-            <button type="button" id="reprocessarTodas" class="px-3 py-1 rounded text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white">Reprocessar todas as falhas</button>
+            <button type="button" id="reprocessarTodas" class="px-3 py-2 md:py-1 rounded text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white">Reprocessar todas as falhas</button>
         </div>
         <p class="text-xs text-gray-500 mb-3">Falhas (desistiu após 6 tentativas) e pendentes que já falharam. "Reprocessar" zera as tentativas; "Descartar" marca como pulado sem enviar.</p>
         <div id="atencao" class="overflow-x-auto"><?= $dados['atencao'] ?></div>

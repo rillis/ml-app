@@ -1,7 +1,7 @@
 <?php
 require __DIR__ . '/../../src/auth.php';
 $paginaContas = 'insights';
-$classeSelect = 'bg-gray-900 border border-gray-700 rounded-lg p-2 text-sm text-gray-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+$classeSelect = 'bg-gray-900 border border-gray-700 rounded-lg p-2 text-base sm:text-sm text-gray-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
 $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6';
 ?>
 <!DOCTYPE html>
@@ -13,7 +13,7 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6';
     <script src="/assets/tailwind.js"></script>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen p-8 font-sans selection:bg-blue-500 selection:text-white">
+<body class="bg-gray-900 text-gray-100 min-h-screen p-4 sm:p-8 font-sans selection:bg-blue-500 selection:text-white">
     <?php require __DIR__ . '/../../src/nav.php'; ?>
     <div class="max-w-5xl mx-auto">
         <?php require __DIR__ . '/../../src/contas/cabecalho.php'; ?>
@@ -492,7 +492,7 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-6 mb-6';
 
         const tituloIsolar = porCategoria ? 'Ver só esta categoria' : 'Ver só esta conta';
         legenda.innerHTML = series.map(s => `
-            <${s.filtro ? `button type="button" data-isolar="${esc(s.filtro)}" title="${tituloIsolar}"` : 'span'} class="flex items-center gap-2 text-sm text-gray-300 ${s.filtro ? 'hover:text-white' : ''}">
+            <${s.filtro ? `button type="button" data-isolar="${esc(s.filtro)}" title="${tituloIsolar}"` : 'span'} class="flex items-center gap-2 py-1.5 sm:py-0 text-sm text-gray-300 ${s.filtro ? 'hover:text-white' : ''}">
                 <span class="inline-block w-4 h-0.5 rounded" style="background:${s.cor}" aria-hidden="true"></span>${esc(s.nome)}
             </${s.filtro ? 'button' : 'span'}>`).join('');
         nota.textContent = zerados.length ? `Zeradas no período, sem linha: ${zerados.join(', ')}.` : '';

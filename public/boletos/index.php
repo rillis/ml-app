@@ -8,23 +8,23 @@
     <script src="/assets/tailwind.js"></script>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen p-8 font-sans selection:bg-blue-500 selection:text-white">
+<body class="bg-gray-900 text-gray-100 min-h-screen p-4 sm:p-8 font-sans selection:bg-blue-500 selection:text-white">
     <?php require __DIR__ . '/../../src/nav.php'; ?>
     <div class="max-w-7xl mx-auto">
         
-        <header class="mb-8 flex justify-between items-end border-b border-gray-700 pb-4">
+        <header class="mb-8 flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-end border-b border-gray-700 pb-4">
             <div>
-                <h1 class="text-4xl font-bold">
+                <h1 class="text-3xl sm:text-4xl font-bold">
                     <span aria-hidden="true">📄</span>
                     <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Contas a Pagar</span>
                 </h1>
             </div>
             
-            <div class="flex flex-wrap gap-3 justify-end">
-                <a href="insights.php" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-emerald-500 text-gray-300 hover:text-emerald-400 font-semibold py-2.5 px-6 rounded-xl transition-all shadow-lg flex items-center gap-2">
+            <div class="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:justify-end">
+                <a href="insights.php" class="justify-center whitespace-nowrap bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-emerald-500 text-gray-300 hover:text-emerald-400 font-semibold py-2.5 px-4 sm:px-6 rounded-xl transition-all shadow-lg flex items-center gap-2">
                     📊 Insights
                 </a>
-                <button onclick="abrirModal()" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-6 rounded-xl transition-colors shadow-lg flex items-center gap-2">
+                <button onclick="abrirModal()" class="justify-center whitespace-nowrap bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-4 sm:px-6 rounded-xl transition-colors shadow-lg flex items-center gap-2">
                     <span class="text-xl leading-none">+</span> Novo Boleto
                 </button>
             </div>
@@ -35,25 +35,34 @@
                 id="busca" 
                 placeholder="Buscar descrição ou código..." 
                 oninput="renderizar()"
-                class="w-full sm:w-1/2 bg-gray-800 border border-gray-700 rounded-xl p-3 text-gray-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-lg transition-colors"
+                class="w-full sm:w-1/2 bg-gray-800 border border-gray-700 rounded-xl p-3 text-base text-gray-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-lg transition-colors"
             >
             
-            <div class="flex flex-wrap items-center justify-end gap-3">
-                <button id="btnCopiarSelecionados" onclick="copiarSelecionados()" disabled class="bg-gray-800 border border-gray-700 px-4 py-3 rounded-xl shadow-lg text-gray-300 enabled:hover:text-gray-100 enabled:hover:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">📋 Copiar código</button>
-                <label class="flex items-center gap-3 cursor-pointer text-gray-300 hover:text-gray-100 select-none bg-gray-800 border border-gray-700 px-4 py-3 rounded-xl shadow-lg transition-colors">
+            <div class="grid grid-cols-2 w-full gap-3 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
+                <button id="btnCopiarSelecionados" onclick="copiarSelecionados()" disabled class="text-sm sm:text-base whitespace-nowrap bg-gray-800 border border-gray-700 px-3 sm:px-4 py-3 rounded-xl shadow-lg text-gray-300 enabled:hover:text-gray-100 enabled:hover:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">📋 Copiar código</button>
+                <label class="flex items-center gap-3 cursor-pointer text-sm sm:text-base whitespace-nowrap text-gray-300 hover:text-gray-100 select-none bg-gray-800 border border-gray-700 px-3 sm:px-4 py-3 rounded-xl shadow-lg transition-colors">
                     <input type="checkbox" id="ocultarPagos" checked onchange="renderizar()" class="w-5 h-5 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800">
-                    Ocultar Boletos Pagos
+                    Ocultar pagos
                 </label>
             </div>
         </div>
 
-        <div class="bg-gray-800 rounded-xl border border-gray-700 shadow-lg overflow-hidden">
+        <!-- Celular: lista de cards. A tabela (abaixo) só aparece a partir de md. -->
+        <div class="md:hidden">
+            <label class="flex items-center gap-3 mb-3 px-1 text-sm text-gray-400 select-none">
+                <input type="checkbox" data-selecionar-todos onchange="selecionarTodosVisiveis(this.checked)" class="w-6 h-6 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800">
+                Selecionar todos
+            </label>
+            <div id="listaMobile" class="space-y-3"></div>
+        </div>
+
+        <div class="hidden md:block bg-gray-800 rounded-xl border border-gray-700 shadow-lg overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-sm whitespace-nowrap">
                     <thead class="bg-gray-900/80 text-gray-400 border-b border-gray-700">
                         <tr>
                             <th class="p-4 w-10">
-                                <input type="checkbox" id="selecionarTodos" onchange="selecionarTodosVisiveis(this.checked)" title="Selecionar todos" class="w-5 h-5 align-middle rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800">
+                                <input type="checkbox" id="selecionarTodos" data-selecionar-todos onchange="selecionarTodosVisiveis(this.checked)" title="Selecionar todos" class="w-5 h-5 align-middle rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800">
                             </th>
                             <th class="p-4 font-semibold">Vencimento (Real)</th>
                             <th class="p-4 font-semibold">Descrição</th>
@@ -70,8 +79,8 @@
     </div>
 
     <div id="modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex justify-center items-center p-4 transition-opacity">
-        <div class="bg-gray-800 p-8 rounded-2xl border border-gray-700 shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col relative">
-            <button onclick="fecharModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-100 text-2xl leading-none">&times;</button>
+        <div class="bg-gray-800 p-5 sm:p-8 rounded-2xl border border-gray-700 shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col relative">
+            <button onclick="fecharModal()" aria-label="Fechar" class="absolute top-2 right-2 sm:top-3 sm:right-3 w-11 h-11 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-100 hover:bg-gray-700 text-2xl leading-none">&times;</button>
             <h2 id="modalTitle" class="text-2xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Novo Boleto</h2>
 
             <label id="areaImportar" class="block mb-4 border-2 border-dashed border-gray-600 hover:border-blue-500 rounded-xl p-3 text-center text-sm text-gray-400 cursor-pointer transition-colors">
@@ -86,7 +95,7 @@
 
                 <div id="listaCards" class="space-y-4 overflow-y-auto min-h-0 pr-1"></div>
 
-                <button type="button" id="btnAdicionarCard" onclick="adicionarCard()" class="mt-4 self-start text-sm text-blue-400 hover:text-blue-300 font-semibold transition-colors">+ Adicionar outro boleto</button>
+                <button type="button" id="btnAdicionarCard" onclick="adicionarCard()" class="mt-4 py-2 self-start text-sm text-blue-400 hover:text-blue-300 font-semibold transition-colors">+ Adicionar outro boleto</button>
 
                 <div class="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-700">
                     <button type="button" onclick="fecharModal()" class="px-5 py-2.5 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Cancelar</button>
@@ -100,7 +109,7 @@
         <div data-card class="space-y-4">
             <div data-cabecalho class="hidden flex justify-between items-center gap-3">
                 <span data-titulo class="text-sm font-semibold text-gray-300 truncate"></span>
-                <button type="button" data-remover class="shrink-0 text-xs text-red-400 hover:text-red-300 font-semibold transition-colors">Remover</button>
+                <button type="button" data-remover class="shrink-0 py-2 px-1 text-xs text-red-400 hover:text-red-300 font-semibold transition-colors">Remover</button>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-400 mb-1">Descrição</label>
@@ -111,7 +120,7 @@
                 <label class="block text-sm font-medium text-blue-300 mb-1">Já existe boleto com este nome, sem valor e sem código. Ao salvar:</label>
                 <select data-vinculo class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-gray-100 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"></select>
             </div>
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-400 mb-1">Vencimento Original</label>
                     <input type="date" data-campo="vencimento" required
@@ -119,14 +128,14 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-400 mb-1">Valor (R$)</label>
-                    <input type="text" data-campo="valor" required placeholder="0,00"
+                    <input type="text" data-campo="valor" required placeholder="0,00" inputmode="decimal"
                            class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-gray-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
                 </div>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-400 mb-1">Código de Barras</label>
                 <input type="text" data-campo="codigo" placeholder="Cole o código do boleto (opcional)"
-                       class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-gray-100 font-mono text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+                       class="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-gray-100 font-mono text-base sm:text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
             </div>
             <p data-erro class="hidden text-sm text-red-400 font-semibold"></p>
         </div>
@@ -247,9 +256,11 @@
     function atualizarSelecao() {
         const total = boletosVisiveis().length;
         const marcados = selecionadosVisiveis().length;
-        const todos = document.getElementById('selecionarTodos');
-        todos.checked = total > 0 && marcados === total;
-        todos.indeterminate = marcados > 0 && marcados < total;
+        // Há um "selecionar todos" na tabela (computador) e outro na lista de cards (celular)
+        document.querySelectorAll('[data-selecionar-todos]').forEach(todos => {
+            todos.checked = total > 0 && marcados === total;
+            todos.indeterminate = marcados > 0 && marcados < total;
+        });
 
         const botao = document.getElementById('btnCopiarSelecionados');
         botao.disabled = marcados === 0;
@@ -591,78 +602,104 @@
         if (confirmou) enviarAcao('apagar', { id: id });
     }
 
+    // Botões AGENDADO/PAGO: a mesma lógica para a tabela (compacto) e para os cards do celular (grande)
+    function botaoStatus(b, campo, ativo, grande) {
+        const rotulo = campo === 'pago' ? 'PAGO' : 'AGENDADO';
+        const cor = campo === 'pago'
+            ? (ativo ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white' : 'bg-gray-700 text-gray-300 border border-transparent hover:bg-emerald-600')
+            : (ativo ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500 hover:text-white' : 'bg-gray-700 text-gray-300 border border-transparent hover:bg-blue-600');
+        const tamanho = grande ? 'h-11 px-2 rounded-lg text-sm w-full' : 'px-3 py-1 rounded-md text-xs';
+        return `<button onclick="alterarStatus(${b.id}, '${campo}', ${ativo ? 1 : 0})" aria-pressed="${ativo}" class="${cor} ${tamanho} font-bold transition-colors">${ativo ? '✓ ' : ''}${rotulo}</button>`;
+    }
+
     function renderizar() {
         const lista = document.getElementById('lista');
+        const listaMobile = document.getElementById('listaMobile');
         const hojeObj = new Date();
         hojeObj.setHours(0,0,0,0);
 
-        const linhas = boletosVisiveis()
-            .map(b => {
-                
-                let rowClasses = "transition-all duration-200 hover:bg-gray-700/40";
-                let btnAgendado = '';
-                let btnPago = '';
-                
-                const pago = b.pago == 1;
-                const agendado = b.agendado == 1;
-                
-                const partesData = b.data_vencimento_real.split('-');
-                const dataVenc = new Date(partesData[0], partesData[1]-1, partesData[2]);
-                const diffTime = dataVenc - hojeObj;
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const linhas = [];
+        const cards = [];
+        boletosVisiveis().forEach(b => {
+            const pago = b.pago == 1;
+            const agendado = b.agendado == 1;
 
-                // INÍCIO DA ALTERAÇÃO
-                let dataExibicao = formatarDataBR(b.data_vencimento_real);
-                if (b.data_vencimento !== b.data_vencimento_real) {
-                    dataExibicao += ` <span class="text-xs text-gray-500">(${formatarDataBR(b.data_vencimento)})</span>`;
-                }
-                // FIM DA ALTERAÇÃO
+            const partesData = b.data_vencimento_real.split('-');
+            const dataVenc = new Date(partesData[0], partesData[1]-1, partesData[2]);
+            const diffDays = Math.ceil((dataVenc - hojeObj) / (1000 * 60 * 60 * 24));
 
-                // Botão Agendado (Primeiro)
-                if (agendado) {
-                    btnAgendado = `<button onclick="alterarStatus(${b.id}, 'agendado', 1)" class="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-3 py-1 rounded-md text-xs font-bold hover:bg-blue-500 hover:text-white transition-colors">AGENDADO</button>`;
-                } else {
-                    btnAgendado = `<button onclick="alterarStatus(${b.id}, 'agendado', 0)" class="bg-gray-700 text-gray-300 px-3 py-1 rounded-md text-xs font-bold hover:bg-blue-600 transition-colors">AGENDADO</button>`;
-                }
+            let dataExibicao = formatarDataBR(b.data_vencimento_real);
+            if (b.data_vencimento !== b.data_vencimento_real) {
+                dataExibicao += ` <span class="text-xs text-gray-500">(${formatarDataBR(b.data_vencimento)})</span>`;
+            }
 
-                if (pago) {
-                    rowClasses += " opacity-40 grayscale";
-                    btnPago = `<button onclick="alterarStatus(${b.id}, 'pago', 1)" class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-md text-xs font-bold hover:bg-emerald-500 hover:text-white transition-colors">PAGO</button>`;
-                } else {
-                    btnPago = `<button onclick="alterarStatus(${b.id}, 'pago', 0)" class="bg-gray-700 text-gray-300 px-3 py-1 rounded-md text-xs font-bold hover:bg-emerald-600 transition-colors">PAGO</button>`;
-                    
-                    if (agendado) {
-                        rowClasses += " border-l-4 border-blue-500 bg-blue-900/10";
-                    } else {
-                        if (diffDays < 0) {
-                            rowClasses += " border-l-4 border-red-500 bg-red-900/20";
-                        } else if (diffDays <= 7) {
-                            rowClasses += " border-l-4 border-orange-500 bg-orange-900/20";
-                        }
-                    }
-                }
+            // Destaque por situação: pago apagado; agendado azul; vencido vermelho; vence em até 7 dias laranja
+            let destaque = '';
+            if (pago) {
+                destaque = 'opacity-40 grayscale';
+            } else if (agendado) {
+                destaque = 'border-l-4 border-l-blue-500 bg-blue-900/10';
+            } else if (diffDays < 0) {
+                destaque = 'border-l-4 border-l-red-500 bg-red-900/20';
+            } else if (diffDays <= 7) {
+                destaque = 'border-l-4 border-l-orange-500 bg-orange-900/20';
+            }
 
-                return `
-                    <tr class="${rowClasses}">
-                        <td class="p-4">
-                            <input type="checkbox" ${selecionados.has(Number(b.id)) ? 'checked' : ''} onchange="alternarSelecao(${Number(b.id)}, this.checked)" class="w-5 h-5 align-middle rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800">
-                        </td>
-                        <td class="p-4 font-medium text-gray-300">${dataExibicao}</td>
-                        <td class="p-4">
-                            <div class="text-gray-100 font-semibold text-base">${htmlspecialchars_js(b.descricao)}</div>
-                            ${b.codigo_boleto ? `<div class="text-xs text-gray-500 font-mono mt-1 cursor-pointer hover:text-blue-400 inline-block" onclick="copiarCodigo('${b.codigo_boleto}')" title="Clique para copiar">${b.codigo_boleto}</div>` : '<div class="text-xs text-gray-600 mt-1 italic">Sem código</div>'}
-                        </td>
-                        <td class="p-4 font-bold text-emerald-400 text-base">${formatarMoeda(b.valor)}</td>
-                        <td class="p-4 space-x-1">${btnAgendado} ${btnPago}</td>
-                        <td class="p-4 text-center">
-                            <button onclick='abrirModal(${JSON.stringify(b).replace(/'/g, "&#39;")})' class="bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white h-8 w-8 rounded font-bold text-sm transition-colors border border-blue-500/20 mx-1" title="Editar">✏️</button>
-                            <button onclick="apagar(${b.id})" class="bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white h-8 w-8 rounded font-bold text-sm transition-colors border border-red-500/20 mx-1" title="Excluir">🗑️</button>
-                        </td>
-                    </tr>
-                `;
-            });
+            const marcado = selecionados.has(Number(b.id)) ? 'checked' : '';
+            const descricao = htmlspecialchars_js(b.descricao);
+            const valor = formatarMoeda(b.valor);
+            const editar = `onclick='abrirModal(${JSON.stringify(b).replace(/'/g, "&#39;")})'`;
+            const btnAgendado = (grande) => botaoStatus(b, 'agendado', agendado, grande);
+            const btnPago = (grande) => botaoStatus(b, 'pago', pago, grande);
+
+            linhas.push(`
+                <tr class="transition-all duration-200 hover:bg-gray-700/40 ${destaque}">
+                    <td class="p-4">
+                        <input type="checkbox" ${marcado} onchange="alternarSelecao(${Number(b.id)}, this.checked)" class="w-5 h-5 align-middle rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800">
+                    </td>
+                    <td class="p-4 font-medium text-gray-300">${dataExibicao}</td>
+                    <td class="p-4">
+                        <div class="text-gray-100 font-semibold text-base">${descricao}</div>
+                        ${b.codigo_boleto ? `<div class="text-xs text-gray-500 font-mono mt-1 cursor-pointer hover:text-blue-400 inline-block" onclick="copiarCodigo('${b.codigo_boleto}')" title="Clique para copiar">${b.codigo_boleto}</div>` : '<div class="text-xs text-gray-600 mt-1 italic">Sem código</div>'}
+                    </td>
+                    <td class="p-4 font-bold text-emerald-400 text-base">${valor}</td>
+                    <td class="p-4 space-x-1">${btnAgendado(false)} ${btnPago(false)}</td>
+                    <td class="p-4 text-center">
+                        <button ${editar} class="bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white h-8 w-8 rounded font-bold text-sm transition-colors border border-blue-500/20 mx-1" title="Editar">✏️</button>
+                        <button onclick="apagar(${b.id})" class="bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white h-8 w-8 rounded font-bold text-sm transition-colors border border-red-500/20 mx-1" title="Excluir">🗑️</button>
+                    </td>
+                </tr>
+            `);
+
+            cards.push(`
+                <div class="rounded-xl border border-gray-700 p-4 shadow-lg ${destaque || 'bg-gray-800'} ${pago ? 'bg-gray-800' : ''}">
+                    <div class="flex items-start gap-3">
+                        <input type="checkbox" ${marcado} onchange="alternarSelecao(${Number(b.id)}, this.checked)" aria-label="Selecionar ${descricao}" class="w-6 h-6 mt-0.5 shrink-0 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-start justify-between gap-3">
+                                <span class="text-gray-100 font-semibold break-words">${descricao}</span>
+                                <span class="font-bold text-emerald-400 whitespace-nowrap">${valor}</span>
+                            </div>
+                            <div class="text-sm text-gray-400 mt-1">Vence ${dataExibicao}</div>
+                            ${b.codigo_boleto
+                                ? `<button type="button" onclick="copiarCodigo('${b.codigo_boleto}')" class="mt-2 w-full text-left py-1.5 text-xs text-gray-500 font-mono truncate active:text-blue-400">📋 ${b.codigo_boleto}</button>`
+                                : '<div class="mt-2 text-xs text-gray-600 italic">Sem código</div>'}
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-[1fr_1fr_2.75rem_2.75rem] gap-2 mt-3">
+                        ${btnAgendado(true)}
+                        ${btnPago(true)}
+                        <button ${editar} aria-label="Editar" class="h-11 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 active:bg-blue-500">✏️</button>
+                        <button onclick="apagar(${b.id})" aria-label="Excluir" class="h-11 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 active:bg-red-500">🗑️</button>
+                    </div>
+                </div>
+            `);
+        });
 
         lista.innerHTML = linhas.join('');
+        listaMobile.innerHTML = cards.length
+            ? cards.join('')
+            : '<p class="text-center text-sm text-gray-500 py-8">Nenhum boleto para mostrar.</p>';
 
         atualizarSelecao();
     }
