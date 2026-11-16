@@ -1,6 +1,6 @@
 # ml-app
 
-Painel interno da loja do Mercado Livre, em `https://dash.rillis.com.br` (porta 51014). Junta num só container os antigos ml-dash, ml-boletos e ml-estoque, mais o módulo de contas pessoais. Tudo exige login.
+Painel interno da loja do Mercado Livre, em `https://dash.rillis.com.br` (porta 51014). Junta num só container os antigos ml-dash, ml-boletos e ml-estoque, mais o módulo de contas pessoais.
 
 PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`).
 
@@ -13,8 +13,6 @@ PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`
 | `/boletos/` | Cadastro de boletos (com leitura de PDF via pdf.js), vencimento ajustado a feriados, insights | `ml_boletos` |
 | `/estoque/` | Estoque local por SKU, com histórico (a lista de SKUs vem de `src/estoque/sku.csv`) | `ml_estoque` |
 | `/contas/` | Contas pessoais mensais e insights | `contas_pessoais` (esquema em `sql/contas_pessoais.sql`) |
-
-Login e usuários: `ml_login.usuarios` (senhas com `password_hash`).
 
 ## Níveis de alerta dos boletos
 

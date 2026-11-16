@@ -170,10 +170,6 @@ $filtros = [
         atualizando = true;
         try {
             const resposta = await fetch('api.php', { cache: 'no-store' });
-            if (resposta.redirected) {
-                location.href = '/login.php?next=%2Fdash%2F';
-                return;
-            }
             if (!resposta.ok) throw new Error('HTTP ' + resposta.status);
             const dados = await resposta.json();
 

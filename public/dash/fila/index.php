@@ -78,10 +78,6 @@ $cards = [
             opcoes.body = JSON.stringify(corpo);
         }
         const resposta = await fetch('api.php?action=' + acao, opcoes);
-        if (resposta.redirected) {
-            location.href = '/login.php?next=%2Fdash%2Ffila%2F';
-            throw new Error('sessão expirada');
-        }
         const dados = await resposta.json();
         if (!resposta.ok) throw new Error(dados.erro || 'HTTP ' + resposta.status);
         return dados;

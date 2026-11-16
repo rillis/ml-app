@@ -19,6 +19,5 @@ $scriptAtual = $_SERVER['SCRIPT_NAME'] ?? '';
     </div>
     <div class="flex items-center gap-3 text-sm text-gray-400 shrink-0">
         <span class="hidden sm:inline">Usuário: <span class="text-blue-400"><?= htmlspecialchars($_SESSION['user'], ENT_QUOTES, 'UTF-8') ?></span></span>
-        <a href="/logout.php" class="px-2 py-2 sm:p-0 text-red-400 hover:text-red-300 hover:underline transition-colors">Sair</a>
     </div>
 </nav>

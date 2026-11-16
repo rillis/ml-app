@@ -45,7 +45,6 @@ const Contas = (() => {
         return `${MESES[numero - 1].slice(0, 3).toLowerCase()}/${String(ano).slice(2)}`;
     }
 
-    // Sessão expirada vira redirecionamento: volta para o login e retorna a esta página depois.
     async function api(action, corpo, parametros = {}) {
         const consulta = new URLSearchParams({ action, ...parametros });
         const opcoes = corpo === undefined ? { cache: 'no-store' } : {
@@ -54,10 +53,6 @@ const Contas = (() => {
             body: JSON.stringify(corpo),
         };
         const resposta = await fetch('api.php?' + consulta, opcoes);
-        if (resposta.redirected) {
-            location.href = '/login.php?next=' + encodeURIComponent(location.pathname + location.search);
-            return new Promise(() => {});
-        }
         const dados = await resposta.json();
         if (dados.erro) throw new Error(dados.erro);
         return dados;
