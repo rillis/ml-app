@@ -10,6 +10,7 @@ $input = json_decode(file_get_contents('php://input'), true);
 $currentUser = $_SESSION['user'] ?? 'system';
 
 require __DIR__ . '/../../src/boletos/vencimento.php';
+require __DIR__ . '/../../src/boletos/nivel.php';
 
 try {
     switch ($action) {
@@ -22,9 +23,13 @@ try {
             $feriados = $stmtFeriados->fetchAll(PDO::FETCH_COLUMN);
 
             // Calcula dinamicamente antes de enviar o JSON
+            $hoje = boletoHoje();
             foreach ($boletos as &$boleto) {
                 $boleto['data_vencimento_real'] = calcularVencimentoReal($boleto['data_vencimento'], $feriados);
+                $boleto['dias'] = boletoDias($boleto['data_vencimento_real'], $hoje);
+                $boleto['nivel'] = boletoNivel((bool)$boleto['pago'], (bool)$boleto['agendado'], $boleto['dias']);
             }
+            unset($boleto);
             
             echo json_encode($boletos);
             break;

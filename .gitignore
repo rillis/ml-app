@@ -25,3 +25,7 @@ Thumbs.db
 desktop.ini
 .vscode/
 .idea/
+
+# Python (alerta/)
+.venv/
+__pycache__/

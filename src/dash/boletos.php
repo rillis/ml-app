@@ -1,6 +1,7 @@
 <?php
-//vencimento real
+//vencimento real e níveis de alerta
 require_once __DIR__ . '/../boletos/vencimento.php';
+require_once __DIR__ . '/../boletos/nivel.php';
 
 //query feriados
 $stmtFeriados = $pdo->query("SELECT data FROM ml_boletos.feriados");
@@ -8,39 +9,32 @@ $feriados = $stmtFeriados->fetchAll(PDO::FETCH_COLUMN);
 
 //query boletos
 $sqlBoletos = "
-    SELECT data_vencimento, descricao, valor, agendado 
-    FROM ml_boletos.boletos 
+    SELECT data_vencimento, descricao, valor, agendado
+    FROM ml_boletos.boletos
     WHERE pago = 0 AND deleted_at IS NULL
 ";
 $boletosBrutos = $pdo->query($sqlBoletos)->fetchAll(PDO::FETCH_ASSOC);
 
-//tratamento dos boletos (vencimento real, filtro de <= 15 dias e formatação visual)
+//tratamento dos boletos (vencimento real, nível de alerta, filtro de <= 15 dias e formatação visual)
 $boletos = [];
-$hojeObj = new DateTime($today ?? date('Y-m-d'));
+$hojeBoletos = boletoHoje(); // fuso da loja; o $today do posts.php está em UTC
 
 foreach ($boletosBrutos as $bol) {
     $vencimentoReal = calcularVencimentoReal($bol['data_vencimento'], $feriados);
-    $vencObj = new DateTime($vencimentoReal);
-    
-    $diff = $hojeObj->diff($vencObj);
-    $dias = (int)$diff->format('%R%a');
-    
+    $dias = boletoDias($vencimentoReal, $hojeBoletos);
+
     if ($dias <= 15) {
+        $nivel = boletoNivel(false, (bool)$bol['agendado'], $dias);
+        $estilo = BOLETO_NIVEIS[$nivel];
+
         $bol['data_vencimento_real'] = $vencimentoReal;
-        $bol['date_fmt'] = $vencObj->format('d/m/Y');
+        $bol['date_fmt'] = (new DateTime($vencimentoReal))->format('d/m/Y');
         $bol['valor_fmt'] = number_format($bol['valor'], 2, ',', '.');
-        $bol['status_class'] = $bol['agendado'] ? 'bg-blue-900 text-blue-300' : 'bg-yellow-900 text-yellow-300';
-        $bol['status_text'] = $bol['agendado'] ? 'Agendado' : 'Pendente';
-        $bol['bg_color'] = $bol['agendado'] ? 'bg-gray-900' : 'bg-gray-700';
-        
-        $dateCompare = $vencObj->format('Y-m-d');
-        if (($today ?? date('Y-m-d')) >= $dateCompare) {
-            $bol['border_class'] = 'border-red-500';
-            $bol['vencido_tag'] = '<span class="bg-red-900 text-red-300 text-xs font-semibold px-2 py-0.5 rounded">Vencido</span>';
-        } else {
-            $bol['border_class'] = $bol['agendado'] ? 'border-blue-500' : 'border-yellow-500';
-            $bol['vencido_tag'] = '';
-        }
+        $bol['status_class'] = $bol['agendado'] ? 'bg-blue-900 text-blue-300' : 'bg-gray-600 text-gray-200';
+        $bol['status_text'] = $bol['agendado'] ? 'Agendado' : 'Não agendado';
+        $bol['bg_color'] = $estilo['fundo'];
+        $bol['border_class'] = $estilo['borda'];
+        $bol['vencido_tag'] = '<span class="' . $estilo['selo'] . ' text-xs font-bold px-2 py-0.5 rounded-full" title="' . $estilo['rotulo'] . '">' . boletoPrazo($dias) . '</span>';
 
         $boletos[] = $bol;
     }

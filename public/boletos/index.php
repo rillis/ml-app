@@ -1,4 +1,7 @@
-<?php require __DIR__ . '/../../src/auth.php'; ?>
+<?php
+require __DIR__ . '/../../src/auth.php';
+require __DIR__ . '/../../src/boletos/nivel.php';
+?>
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -46,6 +49,9 @@
                 </label>
             </div>
         </div>
+
+        <!-- Resumo por nível de alerta; clicar filtra a lista por aquele nível -->
+        <div id="resumoNiveis" class="mb-6 flex flex-wrap gap-2"></div>
 
         <!-- Celular: lista de cards. A tabela (abaixo) só aparece a partir de md. -->
         <div class="md:hidden">
@@ -152,6 +158,11 @@
     <script src="boleto-pdf.js?v=<?= filemtime(__DIR__ . '/boleto-pdf.js') ?>"></script>
     <script>
     let cacheBoletos = [];
+    // Níveis de alerta: a regra fica em src/boletos/nivel.php; a API já manda b.nivel e b.dias.
+    const NIVEIS = <?= json_encode(BOLETO_NIVEIS, JSON_UNESCAPED_UNICODE) ?>;
+    const NIVEIS_RESUMO = ['critico', 'urgente', 'atencao'];
+    const EMOJI_NIVEL = { critico: '🔴', urgente: '🟠', atencao: '🟡' };
+    let filtroNivel = null;
     let leiturasAtivas = 0;
     let sessaoModal = 0; // Invalida leituras de PDF ainda em andamento quando o modal fecha.
     const selecionados = new Set();
@@ -230,6 +241,7 @@
         const ocultarPagos = document.getElementById('ocultarPagos').checked;
         return cacheBoletos
             .filter(b => ocultarPagos ? b.pago == 0 : true)
+            .filter(b => filtroNivel ? b.nivel === filtroNivel : true)
             .filter(b => b.descricao.toLowerCase().includes(termo) || (b.codigo_boleto && b.codigo_boleto.includes(termo)))
             .sort((a, b) => a.data_vencimento_real.localeCompare(b.data_vencimento_real));
     }
@@ -612,11 +624,53 @@
         return `<button onclick="alterarStatus(${b.id}, '${campo}', ${ativo ? 1 : 0})" aria-pressed="${ativo}" class="${cor} ${tamanho} font-bold transition-colors">${ativo ? '✓ ' : ''}${rotulo}</button>`;
     }
 
+    // "venceu há 2d", "hoje", "amanhã", "em 5d" (igual a boletoPrazo() no PHP)
+    function textoPrazo(dias) {
+        if (dias < 0) return `venceu há ${Math.abs(dias)}d`;
+        if (dias === 0) return 'hoje';
+        if (dias === 1) return 'amanhã';
+        return `em ${dias}d`;
+    }
+
+    function seloPrazo(b) {
+        if (b.nivel === 'pago') return '';
+        const n = NIVEIS[b.nivel] || NIVEIS.ok;
+        return `<span class="${n.selo} text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap" title="${n.rotulo}">${textoPrazo(Number(b.dias))}</span>`;
+    }
+
+    function filtrarNivel(nivel) {
+        filtroNivel = filtroNivel === nivel ? null : nivel;
+        renderizar();
+    }
+
+    // Chips com contagem e total por nível (sobre todos os boletos não pagos, sem considerar a busca)
+    function renderizarResumo() {
+        const chips = NIVEIS_RESUMO.map(nivel => {
+            const doNivel = cacheBoletos.filter(b => b.nivel === nivel);
+            const total = doNivel.reduce((soma, b) => soma + (parseFloat(b.valor) || 0), 0);
+            const n = NIVEIS[nivel];
+            const ativo = filtroNivel === nivel;
+            const vazio = doNivel.length === 0;
+            const estilo = ativo
+                ? `${n.selo.replace('animate-pulse', '')} ring-2 ring-white/70`
+                : `bg-gray-800 text-gray-200 ${vazio ? 'opacity-40 cursor-default' : 'hover:bg-gray-700'}`;
+            return `<button type="button" onclick="filtrarNivel('${nivel}')" aria-pressed="${ativo}" ${vazio && !ativo ? 'disabled' : ''}
+                        class="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-700 border-l-4 ${n.borda} text-sm font-semibold shadow-lg transition-colors ${estilo}">
+                        <span>${EMOJI_NIVEL[nivel]} ${n.rotulo}</span>
+                        <span class="font-bold">${doNivel.length}</span>
+                        <span class="opacity-80 font-normal">· ${formatarMoeda(total)}</span>
+                    </button>`;
+        });
+        if (filtroNivel) {
+            chips.push(`<button type="button" onclick="filtrarNivel(null)" class="px-3 py-2 text-sm text-gray-400 hover:text-gray-100">✕ Limpar filtro</button>`);
+        }
+        document.getElementById('resumoNiveis').innerHTML = chips.join('');
+    }
+
     function renderizar() {
         const lista = document.getElementById('lista');
         const listaMobile = document.getElementById('listaMobile');
-        const hojeObj = new Date();
-        hojeObj.setHours(0,0,0,0);
+        renderizarResumo();
 
         const linhas = [];
         const cards = [];
@@ -624,26 +678,17 @@
             const pago = b.pago == 1;
             const agendado = b.agendado == 1;
 
-            const partesData = b.data_vencimento_real.split('-');
-            const dataVenc = new Date(partesData[0], partesData[1]-1, partesData[2]);
-            const diffDays = Math.ceil((dataVenc - hojeObj) / (1000 * 60 * 60 * 24));
-
             let dataExibicao = formatarDataBR(b.data_vencimento_real);
             if (b.data_vencimento !== b.data_vencimento_real) {
                 dataExibicao += ` <span class="text-xs text-gray-500">(${formatarDataBR(b.data_vencimento)})</span>`;
             }
+            const selo = seloPrazo(b);
 
-            // Destaque por situação: pago apagado; agendado azul; vencido vermelho; vence em até 7 dias laranja
-            let destaque = '';
-            if (pago) {
-                destaque = 'opacity-40 grayscale';
-            } else if (agendado) {
-                destaque = 'border-l-4 border-l-blue-500 bg-blue-900/10';
-            } else if (diffDays < 0) {
-                destaque = 'border-l-4 border-l-red-500 bg-red-900/20';
-            } else if (diffDays <= 7) {
-                destaque = 'border-l-4 border-l-orange-500 bg-orange-900/20';
-            }
+            // Destaque pelo nível de alerta (src/boletos/nivel.php); pago fica apagado
+            const n = NIVEIS[b.nivel] || NIVEIS.ok;
+            const destaque = pago
+                ? 'opacity-40 grayscale'
+                : `border-l-4 ${n.borda} ${n.fundo}`;
 
             const marcado = selecionados.has(Number(b.id)) ? 'checked' : '';
             const descricao = htmlspecialchars_js(b.descricao);
@@ -657,7 +702,7 @@
                     <td class="p-4">
                         <input type="checkbox" ${marcado} onchange="alternarSelecao(${Number(b.id)}, this.checked)" class="w-5 h-5 align-middle rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800">
                     </td>
-                    <td class="p-4 font-medium text-gray-300">${dataExibicao}</td>
+                    <td class="p-4 font-medium text-gray-300"><div class="flex items-center gap-2">${dataExibicao} ${selo}</div></td>
                     <td class="p-4">
                         <div class="text-gray-100 font-semibold text-base">${descricao}</div>
                         ${b.codigo_boleto ? `<div class="text-xs text-gray-500 font-mono mt-1 cursor-pointer hover:text-blue-400 inline-block" onclick="copiarCodigo('${b.codigo_boleto}')" title="Clique para copiar">${b.codigo_boleto}</div>` : '<div class="text-xs text-gray-600 mt-1 italic">Sem código</div>'}
@@ -672,7 +717,7 @@
             `);
 
             cards.push(`
-                <div class="rounded-xl border border-gray-700 p-4 shadow-lg ${destaque || 'bg-gray-800'} ${pago ? 'bg-gray-800' : ''}">
+                <div class="rounded-xl border border-gray-700 p-4 shadow-lg ${pago ? 'bg-gray-800' : ''} ${destaque}">
                     <div class="flex items-start gap-3">
                         <input type="checkbox" ${marcado} onchange="alternarSelecao(${Number(b.id)}, this.checked)" aria-label="Selecionar ${descricao}" class="w-6 h-6 mt-0.5 shrink-0 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-gray-800">
                         <div class="min-w-0 flex-1">
@@ -680,7 +725,7 @@
                                 <span class="text-gray-100 font-semibold break-words">${descricao}</span>
                                 <span class="font-bold text-emerald-400 whitespace-nowrap">${valor}</span>
                             </div>
-                            <div class="text-sm text-gray-400 mt-1">Vence ${dataExibicao}</div>
+                            <div class="text-sm text-gray-400 mt-1 flex flex-wrap items-center gap-2"><span>Vence ${dataExibicao}</span> ${selo}</div>
                             ${b.codigo_boleto
                                 ? `<button type="button" onclick="copiarCodigo('${b.codigo_boleto}')" class="mt-2 w-full text-left py-1.5 text-xs text-gray-500 font-mono truncate active:text-blue-400">📋 ${b.codigo_boleto}</button>`
                                 : '<div class="mt-2 text-xs text-gray-600 italic">Sem código</div>'}
