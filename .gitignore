@@ -29,3 +29,5 @@ desktop.ini
 # Python (alerta/)
 .venv/
 __pycache__/
+
+test*
