@@ -115,11 +115,16 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
         document.getElementById('andamento').innerHTML = Object.keys(porCartao).sort().map(conta => {
             const lista = porCartao[conta];
             const restante = lista.reduce((total, c) => total + (c.total - c.ultimoNumero) * c.valor, 0);
+            // Comprometido no mês seguinte: as que terminam este mês já ficam de fora
+            const proximo = Contas.somarMeses(mesHoje, 1);
+            const porMes = lista
+                .filter(c => c.mesInicio <= proximo && mesFim(c) >= proximo)
+                .reduce((total, c) => total + c.valor, 0);
             return `
                 <section class="bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6">
                     <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
                         <h2 class="text-lg font-semibold text-gray-200">${Contas.esc(conta)}</h2>
-                        <span class="text-sm text-gray-400">${lista.length} compra(s) · faltam ${Contas.moeda(restante)}</span>
+                        <span class="text-sm text-gray-400">${lista.length} compra(s) · ${Contas.moeda(porMes)}/mês (${Contas.mesCurto(proximo)}) · faltam ${Contas.moeda(restante)}</span>
                     </div>
                     <div class="space-y-2">${lista.map(c => htmlCompra(c, true)).join('')}</div>
                 </section>`;
