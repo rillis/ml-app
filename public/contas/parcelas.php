@@ -59,10 +59,12 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
         const faltam = c.total - c.ultimoNumero;
         const progresso = Math.round(c.ultimoNumero / c.total * 100);
         // Valores pelo último valor de parcela lido (variações de centavos entre faturas ficam de fora)
-        const detalhes = `${Contas.moeda(c.valor)}/mês. `
-            + `${Contas.moeda(c.ultimoNumero * c.valor)} / ${Contas.moeda(c.total * c.valor)}, `
-            + `Restando: ${Contas.moeda(faltam * c.valor)}. `
-            + `${c.ultimoNumero}/${c.total} parcelas (${Contas.mesCurto(c.mesInicio)} - ${Contas.mesCurto(mesFim(c))})`;
+        const detalhes = [
+            `${Contas.moeda(c.valor)}/mês`,
+            `${Contas.moeda(c.ultimoNumero * c.valor)} / ${Contas.moeda(c.total * c.valor)}`,
+            `Restando: ${Contas.moeda(faltam * c.valor)}`,
+            `${c.ultimoNumero}/${c.total} parcelas (${Contas.mesCurto(c.mesInicio)} - ${Contas.mesCurto(mesFim(c))})`,
+        ].join(' · ');
         return `
             <div class="bg-gray-900 border border-gray-700 rounded-lg p-3 ${ativa ? '' : 'opacity-70'}">
                 <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
