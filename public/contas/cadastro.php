@@ -34,6 +34,12 @@ $classeCampo = 'w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-gr
                     <label for="dia" class="block text-sm font-medium text-gray-400 mb-1">Dia (opcional)</label>
                     <input id="dia" type="number" min="1" max="31" step="1" inputmode="numeric" placeholder="10" class="<?= $classeCampo ?>">
                 </div>
+                <div class="sm:col-span-3">
+                    <label for="cartao" class="block text-sm font-medium text-gray-400 mb-1">Fatura em PDF (cartão)</label>
+                    <select id="cartao" class="<?= $classeCampo ?>">
+                        <option value="">Não é cartão</option>
+                    </select>
+                </div>
             </div>
             <div class="flex justify-end gap-3 mt-4">
                 <button type="button" id="cancelarEdicao" class="hidden px-5 py-2.5 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Cancelar</button>
@@ -47,9 +53,11 @@ $classeCampo = 'w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-gr
 
     <script src="/assets/ui.js?v=<?= filemtime(__DIR__ . '/../assets/ui.js') ?>"></script>
     <script src="comum.js?v=<?= filemtime(__DIR__ . '/comum.js') ?>"></script>
+    <script src="fatura-pdf.js?v=<?= filemtime(__DIR__ . '/fatura-pdf.js') ?>"></script>
     <script>
     let contas = [];
     const campo = id => document.getElementById(id);
+    for (const [id, nome] of Object.entries(FaturaPdf.BANCOS)) campo('cartao').add(new Option(nome, id));
 
     function limparFormulario() {
         campo('formConta').reset();
@@ -67,6 +75,7 @@ $classeCampo = 'w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-gr
             const detalhes = [
                 c.categoria ? Contas.esc(c.categoria) : 'Sem categoria',
                 c.dia ? `dia ${c.dia}` : 'sem vencimento',
+                ...(c.cartao ? [`📄 fatura ${Contas.esc(FaturaPdf.BANCOS[c.cartao] || c.cartao)}`] : []),
                 c.ultimoValor !== null ? `último: ${Contas.moeda(c.ultimoValor)} (${Contas.mesCurto(c.ultimoMes)})` : 'sem valores'
             ].join(' · ');
             return `
@@ -100,7 +109,8 @@ $classeCampo = 'w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-gr
                 id: campo('contaId').value || null,
                 nome: campo('nome').value,
                 categoria: campo('categoria').value,
-                dia: campo('dia').value
+                dia: campo('dia').value,
+                cartao: campo('cartao').value
             });
             ML.toast(editando ? 'Conta atualizada.' : 'Conta adicionada.', 'sucesso');
             limparFormulario();
@@ -122,6 +132,7 @@ $classeCampo = 'w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-gr
             campo('nome').value = conta.nome;
             campo('categoria').value = conta.categoria || '';
             campo('dia').value = conta.dia || '';
+            campo('cartao').value = conta.cartao || '';
             campo('tituloForm').textContent = 'Editar conta';
             campo('botaoSalvar').textContent = 'Salvar alterações';
             campo('cancelarEdicao').classList.remove('hidden');

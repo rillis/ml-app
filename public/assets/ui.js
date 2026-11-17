@@ -150,5 +150,45 @@ const ML = (() => {
         }, null);
     }
 
-    return { toast, confirmar, perguntarQuantidade };
+    // Resolve com a senha digitada, ou null se a pessoa cancelar.
+    function perguntarSenha(opcoes = {}) {
+        const { titulo = 'Senha', dica = '', erro: mensagemErro = '', textoConfirmar = 'Abrir' } = opcoes;
+        return abrirDialogo(titulo, (janela, fechar) => {
+            const formulario = criar('form');
+            formulario.noValidate = true;
+            if (dica) formulario.appendChild(criar('p', 'text-sm text-gray-400 mb-3', dica));
+
+            const campo = criar('input', 'w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-gray-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500');
+            campo.type = 'password';
+            campo.autocomplete = 'off';
+            campo.placeholder = 'Senha';
+            campo.setAttribute('aria-label', 'Senha');
+
+            const erro = criar('p', `${mensagemErro ? '' : 'hidden '}text-sm text-red-400 font-semibold mt-2`, mensagemErro || 'Digite a senha.');
+            const acoes = criar('div', 'flex justify-end gap-3 mt-6');
+            const cancelar = criar('button', CLASSE_BOTAO_SECUNDARIO, 'Cancelar');
+            const ok = criar('button', CLASSE_BOTAO_PRIMARIO, textoConfirmar);
+            cancelar.type = 'button';
+            ok.type = 'submit';
+            cancelar.addEventListener('click', () => fechar(null));
+            acoes.append(cancelar, ok);
+
+            formulario.addEventListener('submit', e => {
+                e.preventDefault();
+                if (!campo.value) {
+                    erro.textContent = 'Digite a senha.';
+                    erro.classList.remove('hidden');
+                    campo.focus();
+                    return;
+                }
+                fechar(campo.value);
+            });
+
+            formulario.append(campo, erro, acoes);
+            janela.appendChild(formulario);
+            return campo;
+        }, null);
+    }
+
+    return { toast, confirmar, perguntarQuantidade, perguntarSenha };
 })();

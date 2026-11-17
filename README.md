@@ -12,7 +12,7 @@ PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`
 | `/dash/fila/` | Fila do webhook do ml-jrf: pendentes, falhas, botões de reprocessar e descartar | `ml_jrf.webhook_queue` |
 | `/boletos/` | Cadastro de boletos (com leitura de PDF via pdf.js), vencimento ajustado a feriados, insights | `ml_boletos` |
 | `/estoque/` | Estoque local por SKU, com histórico (a lista de SKUs vem de `src/estoque/sku.csv`) | `ml_estoque` |
-| `/contas/` | Contas pessoais mensais e insights | `contas_pessoais` (esquema em `sql/contas_pessoais.sql`) |
+| `/contas/` | Contas pessoais mensais, leitura de fatura de cartão em PDF, parcelas e insights | `contas_pessoais` (esquema em `sql/contas_pessoais.sql`) |
 
 ## Níveis de alerta dos boletos
 
@@ -26,6 +26,20 @@ A regra fica em `src/boletos/nivel.php` (tabela de `/boletos/` e widget do Dash)
 | 🔵 Ok | o resto (só na tabela) | `#3B82F6` |
 
 Os dias são contados a partir do vencimento real (ajustado a fim de semana e feriado), no fuso America/Sao_Paulo.
+
+## Faturas de cartão em PDF (`/contas/`)
+
+Contas marcadas como cartão em **Gerenciar contas** ganham um botão 📄 ao lado do valor. O PDF é lido no navegador (pdf.js dos boletos, em `public/contas/fatura-pdf.js`): preenche o valor da fatura e lista as compras parceladas para revisão, com apelido opcional. Se o PDF tiver senha, o app pede num modal.
+
+Bancos com leitor: Nubank, PicPay, Original e Itaú. Banco novo = uma entrada em `BANCOS` no `fatura-pdf.js` e o id em `CONTAS_CARTOES` no `api.php`.
+
+Uma compra é reconhecida de um mês para o outro por cartão + descrição + número de parcelas + mês da 1ª parcela, então o apelido acompanha as próximas faturas. A aba **🧾 Parcelas** mostra o que falta pagar e a soma prevista dos próximos meses.
+
+Bancos criados antes desse recurso precisam da migração:
+
+```bash
+mysql contas_pessoais < sql/migracoes/2026-11-16-faturas-pdf.sql
+```
 
 ## Alerta no Discord (`alerta/`)
 
