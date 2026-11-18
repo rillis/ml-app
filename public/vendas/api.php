@@ -35,6 +35,10 @@ if ($action === 'dados') {
             COUNT(DISTINCT COALESCE(pack_id, id)) AS vendas, SUM(total) AS faturamento
         FROM pedidos WHERE NOT cancelada GROUP BY dia, logistica ORDER BY dia")->fetchAll();
 
+    $cancelados = $pdo->query("SELECT DATE(data_venda) AS dia, logistica,
+            COUNT(DISTINCT COALESCE(pack_id, id)) AS vendas, SUM(total) AS valor
+        FROM pedidos WHERE cancelada GROUP BY dia, logistica ORDER BY dia")->fetchAll();
+
     $skus = $pdo->query("SELECT DATE(p.data_venda) AS dia, i.sku, p.logistica, i.tipo_anuncio,
             SUM(i.qtd) AS unidades, SUM(i.qtd * i.preco) AS faturamento
         FROM itens i JOIN pedidos p ON p.id = i.pedido_id
@@ -54,6 +58,7 @@ if ($action === 'dados') {
     responder([
         'dias' => array_map(fn($d) => [$d['dia'], $d['logistica'] === 'full' ? 1 : 0, (int) $d['vendas'], (float) $d['faturamento']], $dias),
         'skus' => array_map(fn($s) => [$s['dia'], $s['sku'], $s['logistica'] === 'full' ? 1 : 0, $s['tipo_anuncio'] === 'gold_pro' ? 1 : 0, (int) $s['unidades'], (float) $s['faturamento']], $skus),
+        'cancelados' => array_map(fn($c) => [$c['dia'], $c['logistica'] === 'full' ? 1 : 0, (int) $c['vendas'], (float) $c['valor']], $cancelados),
         'titulos' => $titulos,
         'feriados' => $feriados,
         'sincronizacao' => ['ultima_ok' => $ultimaOk, 'ultima' => $sinc],

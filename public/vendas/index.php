@@ -102,6 +102,14 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
         </section>
 
         <section class="<?= $classeCartao ?>">
+            <div class="flex flex-wrap justify-between items-baseline gap-2 mb-4">
+                <h2 class="text-lg font-semibold text-gray-200">Cancelamentos por mês</h2>
+                <div class="flex gap-4 text-sm text-gray-300"><span class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-sm" style="background:#e66767"></span>Valor cancelado</span></div>
+            </div>
+            <div id="graficoCancelamentos" class="relative"></div>
+        </section>
+
+        <section class="<?= $classeCartao ?>">
             <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
                 <h2 class="text-lg font-semibold text-gray-200">SKUs no período</h2>
                 <input id="buscaSku" placeholder="Buscar SKU ou título..." oninput="renderizarSkus()"
@@ -143,6 +151,7 @@ const COR_REAL_NORMAL = '#2f6fd6';
 const COR_PROJ_FULL = '#c4b5fd';
 const COR_PROJ_NORMAL = '#7c4ddb';
 const COR_PROJECAO = '#a78bfa';
+const COR_CANCELADO = '#e66767';
 // Erro médio do backtest (fev–out/2026) da projeção, pelo dia do mês
 const ERRO_PROJECAO = [[3, 17.8], [7, 14.5], [10, 9.8], [15, 6.3], [20, 4.6], [25, 4.5]];
 const COR_COMPARACAO = '#9ca3af';
@@ -155,7 +164,7 @@ const ALTURA_GRAFICO = 260;
 const LIMITE_SKUS = 25;
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
-let dados = { dias: [], skus: [], titulos: {}, feriados: [], sincronizacao: {} };
+let dados = { dias: [], skus: [], titulos: {}, feriados: [], cancelados: [], sincronizacao: {} };
 let feriados = new Set();
 let periodoVisivel = null;
 let mostrarTodosSkus = false;
@@ -314,6 +323,7 @@ function renderizar() {
     renderizarAcumulado(p);
     renderizarDivisoes(atual, comp, temBase);
     renderizarSemana(p.atual);
+    renderizarCancelamentos();
     mostrarTodosSkus = false;
     renderizarSkus();
 }
@@ -725,7 +735,7 @@ function renderizarSemana({ de, ate }) {
         if (alto <= 0) return '';
         const r = Math.min(4, alto, barra / 2), t = y(v);
         return `<path d="M${x},${y(0)} V${t + r} Q${x},${t} ${x + r},${t} H${x + barra - r} Q${x + barra},${t} ${x + barra},${t + r} V${y(0)} Z" fill="${cor}"/>`
-            + `<text x="${(x + barra / 2).toFixed(1)}" y="${(t - 4).toFixed(1)}" text-anchor="middle" fill="${COR_TEXTO_ROTULO}" font-size="${estreito ? 9 : 10}" style="font-variant-numeric:tabular-nums">${estreito ? Math.round(v) + '%' : pct(v)}</text>`;
+            + `<text x="${(x + barra / 2).toFixed(1)}" y="${(t - 4).toFixed(1)}" text-anchor="middle" fill="${COR_TEXTO_ROTULO}" font-size="${estreito ? 9 : 11}" style="font-variant-numeric:tabular-nums">${Math.round(v)}%</text>`;
     };
     const grupos = NOMES.map((nome, i) => {
         const x0 = margem.esquerda + faixa * i + (faixa - (barra * 2 + vao)) / 2;
@@ -738,6 +748,73 @@ function renderizarSemana({ de, ate }) {
         const i = Number(alvo.dataset.dia);
         alvo.addEventListener('pointermove', e => mostrarDica(e, `<div class="font-semibold mb-1">${NOMES[i]}</div>`
             + series.map(s => linhaDica(s.cor, s.nome, `${pct(s.partes[i])} · ${moeda(s.valores[i])}`)).join('')));
+        alvo.addEventListener('pointerleave', esconderDica);
+    });
+}
+
+// Vendas canceladas por mês da venda: valor em colunas; quantidade e % do mês no rótulo e na dica
+function renderizarCancelamentos() {
+    const area = document.getElementById('graficoCancelamentos');
+    const mesAtual = paraTexto(new Date()).slice(0, 7);
+    const somar = linhas => {
+        const mapa = new Map();
+        linhas.forEach(([dia, full, vendas, fat]) => {
+            if (!logisticas.has(full)) return;
+            const chave = dia.slice(0, 7);
+            if (!mapa.has(chave)) mapa.set(chave, { vendas: 0, valor: 0 });
+            mapa.get(chave).vendas += vendas;
+            mapa.get(chave).valor += fat;
+        });
+        return mapa;
+    };
+    const cancelados = somar(dados.cancelados || []);
+    const validos = somar(dados.dias);
+    const inicio = [...validos.keys(), ...cancelados.keys()].sort()[0];
+    if (!inicio) { area.innerHTML = '<p class="text-sm text-gray-500 py-6 text-center">Sem dados.</p>'; return; }
+    const meses = [];
+    for (let m = inicio + '-01'; m.slice(0, 7) <= mesAtual; m = mudarMes(m, 1)) meses.push(m.slice(0, 7));
+    const info = meses.map(m => {
+        const c = cancelados.get(m) || { vendas: 0, valor: 0 };
+        const v = validos.get(m) || { vendas: 0, valor: 0 };
+        const bruto = c.valor + v.valor;
+        return { ...c, pctValor: bruto ? c.valor / bruto * 100 : 0, pctVendas: c.vendas + v.vendas ? c.vendas / (c.vendas + v.vendas) * 100 : 0 };
+    });
+
+    const largura = area.clientWidth;
+    const margem = { esquerda: 76, direita: 8, topo: 18, baixo: 28 };
+    const util = largura - margem.esquerda - margem.direita;
+    const alturaUtil = ALTURA_GRAFICO - margem.topo - margem.baixo;
+    const { topo, passos } = escalaY(Math.max(1, ...info.map(i => i.valor)));
+    const y = v => margem.topo + alturaUtil - v / topo * alturaUtil;
+    const faixa = util / meses.length;
+    const barra = Math.min(24, faixa * 0.6);
+    const pularRotulo = Math.ceil(meses.length / Math.max(1, Math.floor(util / 48)));
+
+    const colunas = meses.map((mes, i) => {
+        const x = margem.esquerda + faixa * i + (faixa - barra) / 2;
+        const { valor } = info[i];
+        const alto = y(0) - y(valor);
+        let marca = '';
+        if (alto > 0) {
+            const r = Math.min(4, alto, barra / 2), t = y(valor);
+            marca = `<path d="M${x},${y(0)} V${t + r} Q${x},${t} ${x + r},${t} H${x + barra - r} Q${x + barra},${t} ${x + barra},${t + r} V${y(0)} Z" fill="${COR_CANCELADO}"/>`
+                + `<text x="${(x + barra / 2).toFixed(1)}" y="${(t - 5).toFixed(1)}" text-anchor="middle" fill="${COR_TEXTO_ROTULO}" font-size="${faixa < 40 ? 9 : 11}" style="font-variant-numeric:tabular-nums">${milhar(valor, faixa < 40 ? 0 : 1)}</text>`;
+        }
+        const ultimo = i === meses.length - 1;
+        const rotulo = (meses.length - 1 - i) % pularRotulo === 0
+            ? `<text x="${(ultimo ? x + barra + 4 : x + barra / 2).toFixed(1)}" y="${ALTURA_GRAFICO - 8}" text-anchor="${ultimo ? 'end' : 'middle'}" fill="${COR_TEXTO_EIXO}" font-size="11">${mesCurto(mes)}${mes === mesAtual ? '*' : ''}</text>` : '';
+        return `${marca}${rotulo}<rect data-alvo="${i}" x="${margem.esquerda + faixa * i}" y="${margem.topo}" width="${faixa}" height="${alturaUtil}" fill="transparent"/>`;
+    }).join('');
+
+    area.innerHTML = `<svg width="${largura}" height="${ALTURA_GRAFICO}" role="img" aria-label="Valor cancelado por mês da venda" class="block">
+        ${grade(passos, y, margem.esquerda, largura - margem.direita)}${colunas}</svg>
+        <p class="text-xs text-gray-500 mt-1">Pelo mês da venda. % = parte do valor vendido no mês (válidas + canceladas) que foi cancelada.</p>`;
+
+    area.querySelectorAll('[data-alvo]').forEach(alvo => {
+        const i = Number(alvo.dataset.alvo);
+        alvo.addEventListener('pointermove', e => mostrarDica(e, `<div class="font-semibold mb-1">${mesCurto(meses[i])}${meses[i] === mesAtual ? ' (parcial)' : ''}</div>`
+            + linhaDica(COR_CANCELADO, 'Valor cancelado', `${moeda(info[i].valor)} · ${pct(info[i].pctValor)}`)
+            + `<div class="flex justify-between gap-4 text-gray-300"><span>Vendas canceladas</span><span class="tabular-nums">${inteiro(info[i].vendas)} · ${pct(info[i].pctVendas)}</span></div>`));
         alvo.addEventListener('pointerleave', esconderDica);
     });
 }
