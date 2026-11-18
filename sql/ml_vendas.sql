@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS ml_vendas.sincronizacoes (
     fim TIMESTAMP NULL,
     modo ENUM('carga', 'atualizacao') NOT NULL,
     desde VARCHAR(40) NOT NULL,
+    -- pedidos = lidos do ML (a folga de 1 h relê alguns); novos e alterados = o que mudou de fato
     pedidos INT UNSIGNED NOT NULL DEFAULT 0,
+    novos INT UNSIGNED NOT NULL DEFAULT 0,
+    alterados INT UNSIGNED NOT NULL DEFAULT 0,
     erro VARCHAR(500) NULL
 );

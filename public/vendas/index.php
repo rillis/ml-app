@@ -888,7 +888,12 @@ async function atualizar() {
         const r = await fetch('api.php?action=atualizar', { method: 'POST' });
         const resposta = await r.json();
         if (!r.ok) throw new Error(resposta.error || 'Falha ao atualizar');
-        ML.toast(`${inteiro(resposta.pedidos)} pedido(s) atualizados em ${String(resposta.segundos).replace('.', ',')} s`, 'sucesso');
+        const mudancas = resposta.novos + resposta.alterados;
+        const detalhe = mudancas
+            ? [resposta.novos && `${inteiro(resposta.novos)} pedido${resposta.novos > 1 ? 's' : ''} novo${resposta.novos > 1 ? 's' : ''}`,
+               resposta.alterados && `${inteiro(resposta.alterados)} alterado${resposta.alterados > 1 ? 's' : ''}`].filter(Boolean).join(' e ')
+            : 'Nada mudou desde a última atualização';
+        ML.toast(`${detalhe} (${inteiro(resposta.lidos)} conferidos em ${String(resposta.segundos).replace('.', ',')} s)`, mudancas ? 'sucesso' : 'info');
         await carregar();
     } catch (e) {
         ML.toast(e.message, 'erro');

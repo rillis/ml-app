@@ -121,7 +121,8 @@ function vendas_data_utc(string $iso): string
     return (new DateTime($iso))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 }
 
-function vendas_gravar_pedido(PDO $pdo, array $p, string $vendedor, ?string $logisticaEnvio): void
+// Devolve 1 = pedido novo, 2 = já existia e mudou, 0 = igual ao que estava guardado
+function vendas_gravar_pedido(PDO $pdo, array $p, string $vendedor, ?string $logisticaEnvio): int
 {
     $itens = [];
     foreach ($p['order_items'] ?? [] as $i => $it) {
@@ -143,12 +144,12 @@ function vendas_gravar_pedido(PDO $pdo, array $p, string $vendedor, ?string $log
     $semNode = !array_filter(array_column($itens, 10));
     $full = $semNode ? $logisticaEnvio === 'fulfillment' : in_array(1, array_column($itens, 11), true);
 
-    $pdo->prepare('INSERT INTO pedidos (id, pack_id, data_venda, status, total, comprador_id, logistica, ml_atualizado, bruto)
+    $grava = $pdo->prepare('INSERT INTO pedidos (id, pack_id, data_venda, status, total, comprador_id, logistica, ml_atualizado, bruto)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE pack_id = VALUES(pack_id), data_venda = VALUES(data_venda), status = VALUES(status),
             total = VALUES(total), comprador_id = VALUES(comprador_id), logistica = VALUES(logistica),
-            ml_atualizado = VALUES(ml_atualizado), bruto = VALUES(bruto)')
-        ->execute([
+            ml_atualizado = VALUES(ml_atualizado), bruto = VALUES(bruto)');
+    $grava->execute([
             $p['id'],
             $p['pack_id'] ?? null,
             vendas_data_local($p['date_created']),
@@ -159,6 +160,11 @@ function vendas_gravar_pedido(PDO $pdo, array $p, string $vendedor, ?string $log
             vendas_data_utc($p['date_last_updated'] ?? $p['last_updated'] ?? $p['date_created']),
             json_encode($p, JSON_UNESCAPED_UNICODE),
         ]);
+    // MySQL conta 1 linha afetada para insert, 2 para update que mudou algo e 0 quando nada mudou
+    $resultado = $grava->rowCount();
+    if ($resultado === 0) {
+        return 0;
+    }
 
     $pdo->prepare('DELETE FROM itens WHERE pedido_id = ?')->execute([$p['id']]);
     $insere = $pdo->prepare('INSERT INTO itens (pedido_id, seq, sku, anuncio, variacao, titulo, qtd, preco, comissao, tipo_anuncio, node_id, do_full)
@@ -166,6 +172,7 @@ function vendas_gravar_pedido(PDO $pdo, array $p, string $vendedor, ?string $log
     foreach ($itens as $item) {
         $insere->execute($item);
     }
+    return $resultado === 1 ? 1 : 2;
 }
 
 // Logística dos pedidos da página que não têm stock.node_id. Quem já está no banco
@@ -215,7 +222,8 @@ function vendas_sincronizar(PDO $pdo, bool $carga = false): array
     $pdo->prepare('INSERT INTO sincronizacoes (modo, desde) VALUES (?, ?)')->execute([$modo, $desde]);
     $sincId = (int) $pdo->lastInsertId();
 
-    $gravados = 0;
+    // lidos = pedidos que vieram do ML (a folga relê alguns já guardados); novos e alterados = o que mudou de fato
+    $lidos = $novos = $alterados = 0;
     try {
         $vendedor = (string) vendas_get('/users/me')['id'];
         $offset = 0;
@@ -228,8 +236,10 @@ function vendas_sincronizar(PDO $pdo, bool $carga = false): array
             $pdo->beginTransaction();
             foreach ($r['results'] as $pedido) {
                 $envio = $pedido['shipping']['id'] ?? null;
-                vendas_gravar_pedido($pdo, $pedido, $vendedor, $envio ? ($envios[$envio] ?? null) : null);
-                $gravados++;
+                $resultado = vendas_gravar_pedido($pdo, $pedido, $vendedor, $envio ? ($envios[$envio] ?? null) : null);
+                $lidos++;
+                $novos += $resultado === 1 ? 1 : 0;
+                $alterados += $resultado === 2 ? 1 : 0;
             }
             $pdo->commit();
             $offset += VENDAS_POR_PAGINA;
@@ -238,15 +248,19 @@ function vendas_sincronizar(PDO $pdo, bool $carga = false): array
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
         }
-        $pdo->prepare('UPDATE sincronizacoes SET fim = NOW(), pedidos = ?, erro = ? WHERE id = ?')
-            ->execute([$gravados, mb_substr($e->getMessage(), 0, 500), $sincId]);
+        $pdo->prepare('UPDATE sincronizacoes SET fim = NOW(), pedidos = ?, novos = ?, alterados = ?, erro = ? WHERE id = ?')
+            ->execute([$lidos, $novos, $alterados, mb_substr($e->getMessage(), 0, 500), $sincId]);
         $pdo->query("DO RELEASE_LOCK('ml_vendas_sync')");
         throw $e;
     }
 
-    $pdo->prepare('UPDATE sincronizacoes SET fim = NOW(), pedidos = ? WHERE id = ?')->execute([$gravados, $sincId]);
+    $pdo->prepare('UPDATE sincronizacoes SET fim = NOW(), pedidos = ?, novos = ?, alterados = ? WHERE id = ?')
+        ->execute([$lidos, $novos, $alterados, $sincId]);
     $pdo->query("DO RELEASE_LOCK('ml_vendas_sync')");
-    return ['modo' => $modo, 'desde' => $desde, 'pedidos' => $gravados, 'segundos' => round(microtime(true) - $inicio, 1)];
+    return [
+        'modo' => $modo, 'desde' => $desde, 'lidos' => $lidos, 'novos' => $novos, 'alterados' => $alterados,
+        'segundos' => round(microtime(true) - $inicio, 1),
+    ];
 }
 
 if (PHP_SAPI === 'cli' && realpath($_SERVER['argv'][0] ?? '') === __FILE__) {
