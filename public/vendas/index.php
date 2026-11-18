@@ -30,6 +30,13 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
             </div>
         </header>
 
+        <div id="atalhos" class="flex flex-wrap gap-1.5 sm:gap-2 mb-3" aria-label="Atalhos de período">
+            <?php foreach (['full' => 'Full', 'mtd' => 'MtD', 'm1' => 'M-1', 'm2' => 'M-2', '15d' => '15D', '7d' => '7D'] as $chave => $nome): ?>
+                <button type="button" data-atalho="<?= $chave ?>" onclick="aplicarAtalho('<?= $chave ?>')"
+                        class="px-2.5 sm:px-3 py-1 rounded-lg text-sm font-semibold border border-gray-700 text-gray-300 hover:border-blue-500 hover:text-white transition-colors"><?= $nome ?></button>
+            <?php endforeach; ?>
+        </div>
+
         <div class="flex flex-wrap items-end gap-3 mb-6">
             <label class="text-sm text-gray-400 flex flex-col gap-1">De
                 <input id="de" type="date" class="<?= $classeSelect ?>" onchange="renderizar()">
@@ -296,9 +303,48 @@ function variacao(atual, anterior, temBase) {
 }
 
 // ===== Telas =====
+// ===== Atalhos de período =====
+function datasDoAtalho(chave) {
+    const hoje = paraTexto(new Date());
+    const inicioMes = hoje.slice(0, 8) + '01';
+    const mesInteiro = n => {
+        const de = mudarMes(inicioMes, -n);
+        const d = paraData(de);
+        return [de, paraTexto(new Date(d.getFullYear(), d.getMonth() + 1, 0))];
+    };
+    return {
+        full: [dados.dias.length ? dados.dias[0][0] : inicioMes, hoje],
+        mtd: [inicioMes, hoje],
+        m1: mesInteiro(1),
+        m2: mesInteiro(2),
+        '15d': [somarDias(hoje, -14), hoje],
+        '7d': [somarDias(hoje, -6), hoje],
+    }[chave];
+}
+
+function aplicarAtalho(chave) {
+    const [de, ate] = datasDoAtalho(chave);
+    document.getElementById('de').value = de;
+    document.getElementById('ate').value = ate;
+    renderizar();
+}
+
+// Destaca o atalho que bate com as datas escolhidas (vale também para datas digitadas)
+function marcarAtalho({ de, ate }) {
+    document.querySelectorAll('[data-atalho]').forEach(botao => {
+        const [aDe, aAte] = datasDoAtalho(botao.dataset.atalho);
+        const ativo = aDe === de && aAte === ate;
+        botao.classList.toggle('bg-blue-600', ativo);
+        botao.classList.toggle('border-blue-600', ativo);
+        botao.classList.toggle('text-white', ativo);
+        botao.setAttribute('aria-pressed', String(ativo));
+    });
+}
+
 function renderizar() {
     const p = periodos();
     periodoVisivel = p;
+    marcarAtalho(p.atual);
     const atual = resumo(p.atual);
     const comp = resumo(p.comparacao);
     const temBase = temDados(p.comparacao);
