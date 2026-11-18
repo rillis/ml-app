@@ -26,6 +26,8 @@ Na comparação por dias úteis, a comparação começa no mesmo dia do período
 
 **Projeção do mês atual:** média de três métodos, todos com os dias completos até ontem: perfil da semana (peso de cada dia nas 8 semanas antes do mês), ritmo dos últimos 28 dias e ritmo dos últimos 7 dias, os dois aplicados aos dias que faltam. Feriado conta como domingo. O que falta é dividido entre Full e normal pelo mix do mês até agora. A faixa (±) é o erro médio da média dos três métodos em fev–out/2026, em cada ponto do mês (`ERRO_PROJECAO` em `public/vendas/index.php`). Ela aparece na barra do mês em "Faturamento por mês" e como linha roxa no acumulado.
 
+O card **Evolução da projeção do mês** não segue os filtros: mostra o acumulado do mês atual (Full e normal), o mês anterior inteiro e uma linha de projeção por dia, refeita como se fosse a manhã daquele dia (só com os dias completos até a véspera). Abaixo, o fechamento projetado em cada dia.
+
 No gráfico de acumulado, a comparação usa sempre o calendário, mesmo com dias úteis selecionados. Período que começa no dia 1 mostra o mês inteiro, e a comparação também.
 
 Full ou normal vem de `order_items[].stock.node_id`: armazém do ML (`BRSP02`, `BRSP04`...) é Full. Pedidos de antes de 2026-07 não trazem esse campo; para eles a cópia consulta o envio (`/shipments`).

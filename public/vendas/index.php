@@ -89,6 +89,17 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
             <div id="graficoMensal" class="relative"></div>
         </section>
 
+        <section class="<?= $classeCartao ?>">
+            <div class="flex flex-wrap justify-between items-baseline gap-2 mb-1">
+                <h2 class="text-lg font-semibold text-gray-200">Evolução da projeção do mês</h2>
+                <div id="legendaEvolucao" class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-300"></div>
+            </div>
+            <p class="text-xs text-gray-500 mb-4">Mês atual inteiro, Full e normal, sem os filtros acima. Cada linha roxa é a projeção feita na manhã de um dia, com os dias completos até a véspera; a mais forte é a de hoje.</p>
+            <div id="graficoEvolucao" class="relative"></div>
+            <h3 class="text-sm font-semibold text-gray-300 mt-6 mb-2">Fechamento projetado em cada dia</h3>
+            <div id="graficoFechamentos" class="relative"></div>
+        </section>
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <section class="<?= $classeCartao ?> !mb-0 md:!mb-6">
                 <h2 class="text-lg font-semibold text-gray-200 mb-4">Full × normal</h2>
@@ -368,6 +379,7 @@ function renderizar() {
         </div>`).join('');
 
     renderizarMensal();
+    renderizarEvolucao();
     renderizarAcumulado(p);
     renderizarDivisoes(atual, comp, temBase);
     renderizarSemana(p.atual);
@@ -443,14 +455,13 @@ function erroProjecao(dia) {
     return ERRO_PROJECAO[ERRO_PROJECAO.length - 1][1];
 }
 
-function projecaoM0() {
-    const hoje = paraTexto(new Date());
+// Projeção do fechamento do mês feita na manhã de `hoje`: só enxerga os dias completos (até a véspera).
+// valor(dia) = faturamento do dia. Devolve null se ainda não há base para nenhum método.
+function projetarMes(hoje, valor) {
     const inicio = hoje.slice(0, 8) + '01';
     const d = paraData(hoje);
     const N = ultimoDiaDoMes(d.getFullYear(), d.getMonth());
     const dias = Array.from({ length: N }, (_, i) => somarDias(inicio, i));
-    const porDia = faturamentoPorDia();
-    const valor = dia => { const v = porDia.get(dia); return v ? v[0] + v[1] : 0; };
     const ontem = somarDias(hoje, -1);
     const c = d.getDate() - 1; // dias completos no mês
     const completos = dias.slice(0, c);
@@ -469,8 +480,16 @@ function projecaoM0() {
         if (base > 0) metodos.push(mtd + soma(ultimos.map(valor)) / base * pesoRestante);
     });
     if (!metodos.length) return null;
+    return { total: soma(metodos) / metodos.length, dias, c, N, mtd, pesoOntem };
+}
 
-    const total = soma(metodos) / metodos.length;
+function projecaoM0() {
+    const hoje = paraTexto(new Date());
+    const porDia = faturamentoPorDia();
+    const valor = dia => { const v = porDia.get(dia); return v ? v[0] + v[1] : 0; };
+    const base = projetarMes(hoje, valor);
+    if (!base) return null;
+    const { total, dias, c, N, pesoOntem } = base;
     const real = [0, 0];
     dias.slice(0, c + 1).forEach(x => { const v = porDia.get(x); if (v) { real[0] += v[0]; real[1] += v[1]; } });
     const realizado = real[0] + real[1];
@@ -694,6 +713,155 @@ function renderizarAcumulado(p) {
         mostrarDica(e, series.filter(visivel).map(s => linhaDica(s.cor, `${s.nome} · ${dataCurta(somarDias(s.de, i)).slice(0, 5)}`, moeda(s.valores[i]))).join('') || '<span class="text-gray-400">Sem dados neste dia</span>');
     });
     svg.addEventListener('pointerleave', () => { marcador.classList.add('hidden'); esconderDica(); });
+}
+
+// ===== Evolução da projeção (imune aos filtros) =====
+function renderizarEvolucao() {
+    const area = document.getElementById('graficoEvolucao');
+    const areaFech = document.getElementById('graficoFechamentos');
+    const porDia = faturamentoPorDia();
+    const valor = dia => { const v = porDia.get(dia); return v ? v[0] + v[1] : 0; };
+    const hoje = paraTexto(new Date());
+    const inicio = hoje.slice(0, 8) + '01';
+    const diaHoje = paraData(hoje).getDate();
+    const N = ultimoDiaDoMes(paraData(hoje).getFullYear(), paraData(hoje).getMonth());
+    const inicioAnt = mudarMes(inicio, -1);
+    const Nant = ultimoDiaDoMes(paraData(inicioAnt).getFullYear(), paraData(inicioAnt).getMonth());
+
+    // Índice j = acumulado ao fim do dia j (j = 0 é o começo do mês, zero)
+    const acumular = (de, quantos) => { const v = [0]; for (let k = 0; k < quantos; k++) v.push(v[k] + valor(somarDias(de, k))); return v; };
+    const realizado = acumular(inicio, diaHoje);   // até hoje (hoje ainda parcial)
+    const anterior = acumular(inicioAnt, Nant);
+
+    // Projeção feita na manhã do dia r: parte do acumulado até r-1 e distribui o resto pelos dias r..N
+    const projecoes = [];
+    for (let r = 1; r <= diaHoje; r++) {
+        const base = projetarMes(somarDias(inicio, r - 1), valor);
+        if (!base) continue;
+        const pesos = base.dias.slice(r - 1).map(x => base.pesoOntem[tipoDia(x)]);
+        const somaPesos = soma(pesos);
+        const restante = Math.max(0, base.total - realizado[r - 1]);
+        const valores = Array(N + 1).fill(null);
+        valores[r - 1] = realizado[r - 1];
+        pesos.forEach((p, k) => { valores[r + k] = valores[r - 1 + k] + (somaPesos ? restante * p / somaPesos : 0); });
+        projecoes.push({ r, total: valores[N], valores });
+    }
+    if (!projecoes.length) {
+        area.innerHTML = areaFech.innerHTML = '<p class="text-sm text-gray-500 py-6 text-center">Sem base para projetar ainda.</p>';
+        return;
+    }
+    const ultima = projecoes[projecoes.length - 1];
+    document.getElementById('legendaEvolucao').innerHTML = legenda([
+        [COR_ATUAL, 'Realizado', true], [COR_COMPARACAO, mesLongo(inicioAnt), true, 'tracejado'], [COR_PROJECAO, 'Projeções', true],
+    ]);
+
+    // --- Leque de projeções ---
+    const tamanho = Math.max(N, Nant) + 1;
+    const largura = area.clientWidth;
+    const margem = { esquerda: 76, direita: 16, topo: 20, baixo: 28 };
+    const util = largura - margem.esquerda - margem.direita;
+    const altura = 300;
+    const alturaUtil = altura - margem.topo - margem.baixo;
+    const { topo, passos } = escalaY(Math.max(...anterior, ...projecoes.map(p => p.total), ...realizado));
+    const x = j => margem.esquerda + j / (tamanho - 1) * util;
+    const y = v => margem.topo + alturaUtil - v / topo * alturaUtil;
+    const caminho = valores => valores.map((v, j) => (v === null ? null : `${x(j).toFixed(1)},${y(v).toFixed(1)}`)).filter(Boolean).join(' ');
+    // Mais antiga quase apagada, mais recente forte: o leque mostra a direção sem virar um emaranhado
+    const opacidade = k => projecoes.length === 1 ? 1 : 0.15 + 0.55 * k / (projecoes.length - 1);
+    const leque = projecoes.map((p, k) => `<polyline data-r="${p.r}" points="${caminho(p.valores)}" fill="none" stroke="${COR_PROJECAO}" stroke-width="${p === ultima ? 2.5 : 1.25}" stroke-opacity="${p === ultima ? 1 : opacidade(k).toFixed(2)}" stroke-linejoin="round" stroke-linecap="round" ${p === ultima ? 'stroke-dasharray="1 5"' : ''}/>`).join('');
+    const rotulo = (px, py, texto, ancora) => `<text x="${px.toFixed(1)}" y="${py.toFixed(1)}" text-anchor="${ancora}" fill="${COR_TEXTO_ROTULO}" font-size="11" stroke="${COR_FUNDO}" stroke-width="3" style="font-variant-numeric:tabular-nums;paint-order:stroke">${esc(texto)}</text>`;
+    const pontas = [
+        { v: anterior[Nant], j: Nant, cor: COR_COMPARACAO, texto: moedaCurta(anterior[Nant]) },
+        { v: ultima.total, j: N, cor: COR_PROJECAO, texto: moedaCurta(ultima.total) + ' hoje' },
+    ].sort((a, b) => b.v - a.v);
+    let ultimoY = -Infinity;
+    const finais = pontas.map(p => {
+        const py = Math.max(y(p.v) - 10, ultimoY + 14);
+        ultimoY = py;
+        return `<circle cx="${x(p.j).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="4" fill="${p.cor}" stroke="${COR_FUNDO}" stroke-width="2"/>` + rotulo(x(p.j) - 8, py, p.texto, 'end');
+    }).join('');
+    const pular = Math.ceil(tamanho / Math.max(1, Math.floor(util / 30)));
+    const eixo = Array.from({ length: tamanho }, (_, j) => j).filter(j => j > 0 && (j % pular === 0 || j === 1))
+        .map(j => `<text x="${x(j).toFixed(1)}" y="${altura - 8}" text-anchor="middle" fill="${COR_TEXTO_EIXO}" font-size="11">${j}</text>`).join('');
+
+    area.innerHTML = `<svg width="${largura}" height="${altura}" role="img" aria-label="Acumulado do mês com ${projecoes.length} projeções, uma por dia, e o mês anterior inteiro" class="block" style="touch-action:pan-y">
+        ${grade(passos, y, margem.esquerda, largura - margem.direita)}
+        <polyline points="${caminho(anterior)}" fill="none" stroke="${COR_COMPARACAO}" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>
+        ${leque}
+        <polyline points="${caminho(realizado)}" fill="none" stroke="${COR_ATUAL}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <circle cx="${x(diaHoje).toFixed(1)}" cy="${y(realizado[diaHoje]).toFixed(1)}" r="4" fill="${COR_ATUAL}" stroke="${COR_FUNDO}" stroke-width="2"/>
+        ${finais}${eixo}
+        <g data-marcador class="hidden"><line data-mira y1="${margem.topo}" y2="${margem.topo + alturaUtil}" stroke="${COR_TEXTO_EIXO}" stroke-width="1"/></g>
+        <rect data-alvo x="${margem.esquerda - 10}" y="0" width="${util + 20}" height="${altura - margem.baixo}" fill="transparent"/></svg>`;
+
+    // --- Fechamento projetado em cada dia ---
+    const larguraF = areaFech.clientWidth;
+    const alturaF = 170;
+    const mF = { esquerda: 76, direita: 16, topo: 16, baixo: 26 };
+    const utilF = larguraF - mF.esquerda - mF.direita;
+    const altUtilF = alturaF - mF.topo - mF.baixo;
+    const valoresF = projecoes.map(p => p.total);
+    const minF = Math.min(...valoresF, anterior[Nant]), maxF = Math.max(...valoresF, anterior[Nant]);
+    const folgaF = (maxF - minF) * 0.15 || maxF * 0.1 || 1;
+    const baseF = Math.max(0, minF - folgaF), topoF = maxF + folgaF;
+    const xF = r => mF.esquerda + (N > 1 ? (r - 1) / (N - 1) * utilF : utilF / 2);
+    const yF = v => mF.topo + altUtilF - (v - baseF) / (topoF - baseF) * altUtilF;
+    const refY = yF(anterior[Nant]);
+    const pontosF = projecoes.map(p => `<circle data-ponto-r="${p.r}" cx="${xF(p.r).toFixed(1)}" cy="${yF(p.total).toFixed(1)}" r="${p === ultima ? 4.5 : 3}" fill="${COR_PROJECAO}" stroke="${COR_FUNDO}" stroke-width="1.5"/>`).join('');
+    const eixoF = Array.from({ length: N }, (_, k) => k + 1).filter(r => r === 1 || r % pular === 0)
+        .map(r => `<text x="${xF(r).toFixed(1)}" y="${alturaF - 6}" text-anchor="middle" fill="${COR_TEXTO_EIXO}" font-size="11">${r}</text>`).join('');
+    const marcasF = [baseF + (topoF - baseF) * 0.15, (baseF + topoF) / 2, topoF - (topoF - baseF) * 0.15];
+    areaFech.innerHTML = `<svg width="${larguraF}" height="${alturaF}" role="img" aria-label="Fechamento do mês projetado em cada dia" class="block">
+        ${marcasF.map(v => `<line x1="${mF.esquerda}" x2="${larguraF - mF.direita}" y1="${yF(v).toFixed(1)}" y2="${yF(v).toFixed(1)}" stroke="${COR_GRADE}"/><text x="${mF.esquerda - 8}" y="${(yF(v) + 4).toFixed(1)}" text-anchor="end" fill="${COR_TEXTO_EIXO}" font-size="11">${moedaCurta(v)}</text>`).join('')}
+        <line x1="${mF.esquerda}" x2="${larguraF - mF.direita}" y1="${refY.toFixed(1)}" y2="${refY.toFixed(1)}" stroke="${COR_COMPARACAO}" stroke-dasharray="5 4"/>
+        ${rotulo(larguraF - mF.direita, refY - 6, mesLongo(inicioAnt) + ': ' + moedaCurta(anterior[Nant]), 'end')}
+        <polyline points="${projecoes.map(p => `${xF(p.r).toFixed(1)},${yF(p.total).toFixed(1)}`).join(' ')}" fill="none" stroke="${COR_PROJECAO}" stroke-width="1.5" stroke-opacity="0.6"/>
+        ${pontosF}${eixoF}
+        <rect data-alvo x="${mF.esquerda - 10}" y="0" width="${utilF + 20}" height="${alturaF - mF.baixo}" fill="transparent"/></svg>`;
+
+    // Passar o mouse num dia (em qualquer dos dois) destaca a projeção feita naquele dia
+    const svg = area.querySelector('svg');
+    const marcador = svg.querySelector('[data-marcador]');
+    const destacar = (r, e) => {
+        const p = projecoes.find(q => q.r === r);
+        svg.querySelectorAll('[data-r]').forEach(l => {
+            const ativo = Number(l.dataset.r) === r;
+            l.setAttribute('stroke-opacity', ativo ? '1' : '0.08');
+            l.setAttribute('stroke-width', ativo ? '2.5' : '1.25');
+        });
+        areaFech.querySelectorAll('[data-ponto-r]').forEach(c => c.setAttribute('r', Number(c.dataset.pontoR) === r ? 6 : 3));
+        marcador.classList.remove('hidden');
+        const mira = marcador.querySelector('[data-mira]');
+        mira.setAttribute('x1', x(r - 1)); mira.setAttribute('x2', x(r - 1));
+        const dia = somarDias(inicio, r - 1);
+        mostrarDica(e, `<div class="font-semibold mb-1">Projeção da manhã de ${dataCurta(dia).slice(0, 5)}</div>`
+            + (p ? linhaDica(COR_PROJECAO, 'Fechamento projetado', moeda(p.total)) : '<div class="text-gray-400">Sem projeção neste dia</div>')
+            + linhaDica(COR_ATUAL, `Realizado até ${dataCurta(somarDias(dia, -1)).slice(0, 5)}`, moeda(realizado[r - 1]))
+            + linhaDica(COR_COMPARACAO, `${mesLongo(inicioAnt)} até o dia ${r - 1}`, r - 1 <= Nant ? moeda(anterior[r - 1]) : '—')
+            + (p && r > 1 && projecoes.find(q => q.r === r - 1) ? `<div class="text-xs text-gray-400 mt-1">vs projeção da véspera: ${variacao(p.total, projecoes.find(q => q.r === r - 1).total, true)}</div>` : ''));
+    };
+    const limpar = () => {
+        projecoes.forEach((p, k) => {
+            const l = svg.querySelector(`[data-r="${p.r}"]`);
+            l.setAttribute('stroke-opacity', p === ultima ? '1' : opacidade(k).toFixed(2));
+            l.setAttribute('stroke-width', p === ultima ? '2.5' : '1.25');
+        });
+        areaFech.querySelectorAll('[data-ponto-r]').forEach(c => c.setAttribute('r', Number(c.dataset.pontoR) === ultima.r ? 4.5 : 3));
+        marcador.classList.add('hidden');
+        esconderDica();
+    };
+    svg.querySelector('[data-alvo]').addEventListener('pointermove', e => {
+        const rel = e.clientX - svg.getBoundingClientRect().left;
+        const j = Math.round((rel - margem.esquerda) / (util / (tamanho - 1)));
+        destacar(Math.min(diaHoje, Math.max(1, j + 1)), e);
+    });
+    svg.addEventListener('pointerleave', limpar);
+    const svgF = areaFech.querySelector('svg');
+    svgF.querySelector('[data-alvo]').addEventListener('pointermove', e => {
+        const rel = e.clientX - svgF.getBoundingClientRect().left;
+        destacar(Math.min(diaHoje, Math.max(1, Math.round((rel - mF.esquerda) / (utilF / Math.max(1, N - 1))) + 1)), e);
+    });
+    svgF.addEventListener('pointerleave', limpar);
 }
 
 // Uma barra só, dividida entre as duas partes (somam 100%). Cada lado traz %, valor, unidades e a
