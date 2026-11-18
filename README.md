@@ -1,6 +1,6 @@
 # ml-app
 
-Painel interno da loja do Mercado Livre, em `https://dash.rillis.com.br` (porta 51014). Junta num só container os antigos ml-dash, ml-boletos e ml-estoque, mais o módulo de contas pessoais.
+Painel interno da loja do Mercado Livre, em `https://dash.rillis.com.br` (porta 51014). Junta num só container os antigos ml-dash, ml-boletos e ml-estoque, mais o módulo de contas pessoais. As abas Etiquetas e Margem são interfaces para serviços que rodam em containers próprios.
 
 PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`).
 
@@ -13,6 +13,7 @@ PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`
 | `/boletos/` | Cadastro de boletos (com leitura de PDF via pdf.js), vencimento ajustado a feriados, insights | `ml_boletos` |
 | `/vendas/` | Vendas do ML copiadas para o banco: comparativo entre períodos (datas livres, padrão mês até hoje; contra o período anterior, o período anterior em dias úteis ou o mesmo período do ano passado), faturamento por mês (Full × normal), acumulado do período, Premium × Clássico, faturamento por dia da semana, cancelamentos por mês, tabela por SKU e anúncios que não existem mais (com os equivalentes de hoje). Canceladas ficam fora das outras visões | `ml_vendas` (esquema em `sql/ml_vendas.sql`) |
 | `/full/` | Estoque dos anúncios no Full e sugestão de envio: quando criar o próximo envio e quanto mandar de cada anúncio, pelo ciclo escolhido | `ml_vendas` (tabelas `full_*`), `ml_estoque` |
+| `/margem/` | Custo, margem e preço sugerido de cada anúncio, comparador de SKUs da tabela com os anúncios, somador do PDF de envio do Full e as tabelas de preço e apelidos. Tudo roda no ml-tools-web, em container próprio; o `api.php` repassa as chamadas para ele (`MARGEM_URL`, padrão `http://192.168.15.11:51016`) | — |
 | `/estoque/` | Estoque local por SKU, com histórico (a lista de SKUs vem de `src/estoque/sku.csv`) | `ml_estoque` |
 | `/etiquetas/` | Vendas aguardando NF e prontas para imprimir; processa em lote (NF-e, DANFEs, etiquetas e mensagem) pelo serviço ml-etiquetas-web, que roda em container próprio. O `api.php` repassa as chamadas para ele (`ETIQUETAS_URL`, padrão `http://192.168.15.11:51015`) | — |
 | `/contas/` | Contas pessoais mensais, leitura de fatura de cartão em PDF, parcelas e insights | `contas_pessoais` (esquema em `sql/contas_pessoais.sql`) |
