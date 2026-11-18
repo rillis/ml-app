@@ -124,6 +124,9 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
 // Mesma ordem de cores validada dos Insights (fundo #1f2937). A cor acompanha a logística, nunca a posição.
 const COR_FULL = '#3987e5';
 const COR_NORMAL = '#d95926';
+// Próximas da mesma ordem validada, para o tipo de anúncio não repetir as cores da logística
+const COR_PREMIUM = '#199e70';
+const COR_CLASSICO = '#c98500';
 const COR_ATUAL = '#3987e5';
 const COR_COMPARACAO = '#9ca3af';
 const COR_FUNDO = '#1f2937';
@@ -290,7 +293,7 @@ function renderizar() {
 
     renderizarMensal();
     renderizarAcumulado(p, atual, comp, temBase);
-    renderizarDivisoes(atual);
+    renderizarDivisoes(atual, comp, temBase);
     mostrarTodosSkus = false;
     renderizarSkus();
 }
@@ -475,32 +478,50 @@ function renderizarAcumulado(p, atual, comp, temBase) {
     svg.addEventListener('pointerleave', () => { marcador.classList.add('hidden'); esconderDica(); });
 }
 
-function barrasHorizontais(alvo, itens) {
-    const total = soma(itens.map(i => i.valor)) || 1;
-    const maximo = Math.max(...itens.map(i => i.valor)) || 1;
-    document.getElementById(alvo).innerHTML = `<div class="space-y-3">${itens.map(item => `
-        <div>
-            <div class="flex justify-between gap-3 text-sm mb-1">
-                <span class="text-gray-200">${esc(item.nome)}</span>
-                <span class="text-gray-300 tabular-nums whitespace-nowrap">${moeda(item.valor)} · ${pct(item.valor / total * 100)}</span>
+// Uma barra só, dividida entre as duas partes (somam 100%). Cada lado traz %, valor, unidades e a
+// mudança da participação contra a comparação, em pontos percentuais.
+function barraDividida(alvo, itens) {
+    const area = document.getElementById(alvo);
+    const total = soma(itens.map(i => i.valor));
+    if (!total) { area.innerHTML = '<p class="text-sm text-gray-500 py-4 text-center">Sem vendas no período.</p>'; return; }
+    const totalAntes = soma(itens.map(i => i.antes ?? 0));
+    const participacao = i => i.valor / total * 100;
+    const mudanca = i => {
+        if (i.antes === null || !totalAntes) return '';
+        const pp = participacao(i) - i.antes / totalAntes * 100;
+        if (Math.abs(pp) < 0.05) return '<span class="text-gray-500">= comparação</span>';
+        return `<span class="text-gray-400">${pp > 0 ? '▲' : '▼'} ${Math.abs(pp).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} p.p. vs comparação</span>`;
+    };
+    const lado = (i, direita) => `
+        <div class="min-w-0 ${direita ? 'text-right' : ''}">
+            <div class="flex items-center gap-2 text-sm text-gray-300 ${direita ? 'justify-end' : ''}">
+                <span class="inline-block w-2.5 h-2.5 rounded-sm" style="background:${i.cor}"></span>${esc(i.nome)}
             </div>
-            <div class="h-2 bg-gray-900 rounded-r"><div class="h-2 rounded-r" style="width:${item.valor / maximo * 100}%;background:${item.cor}"></div></div>
-            <div class="text-xs text-gray-500 mt-1 tabular-nums">${inteiro(item.unidades)} unidades</div>
-        </div>`).join('')}</div>`;
+            <div class="text-2xl font-bold tabular-nums text-gray-100">${pct(participacao(i))}</div>
+            <div class="text-xs text-gray-400 tabular-nums">${moeda(i.valor)} · ${inteiro(i.unidades)} un.</div>
+            <div class="text-xs tabular-nums mt-0.5">${mudanca(i)}</div>
+        </div>`;
+    const visiveis = itens.filter(i => i.valor > 0);
+    const segmentos = visiveis.map((i, k) => `<div class="h-full ${k === 0 ? 'rounded-l' : ''} ${k === visiveis.length - 1 ? 'rounded-r' : ''}"
+            style="width:${participacao(i)}%;background:${i.cor}" title="${esc(i.nome)}: ${pct(participacao(i))}"></div>`).join('');
+    area.innerHTML = `
+        <div class="flex justify-between gap-4 mb-3">${lado(itens[0], false)}${lado(itens[1], true)}</div>
+        <div class="flex h-3 gap-[2px]" role="img" aria-label="${itens.map(i => `${esc(i.nome)} ${pct(participacao(i))}`).join(', ')}">${segmentos}</div>`;
 }
 
-function renderizarDivisoes(atual) {
+function renderizarDivisoes(atual, comp, temBase) {
     const parte = (filtro) => {
         const linhas = atual.skus.filter(filtro);
-        return { valor: soma(linhas.map(s => s[5])), unidades: soma(linhas.map(s => s[4])) };
+        const antes = temBase ? soma(comp.skus.filter(filtro).map(s => s[5])) : null;
+        return { valor: soma(linhas.map(s => s[5])), unidades: soma(linhas.map(s => s[4])), antes };
     };
-    barrasHorizontais('divisaoLogistica', [
+    barraDividida('divisaoLogistica', [
         { nome: 'Full', cor: COR_FULL, ...parte(s => s[2] === 1) },
         { nome: 'Normal', cor: COR_NORMAL, ...parte(s => s[2] === 0) },
     ]);
-    barrasHorizontais('divisaoAnuncio', [
-        { nome: 'Premium', cor: COR_TEXTO_ROTULO, ...parte(s => s[3] === 1) },
-        { nome: 'Clássico', cor: COR_TEXTO_EIXO, ...parte(s => s[3] === 0) },
+    barraDividida('divisaoAnuncio', [
+        { nome: 'Premium', cor: COR_PREMIUM, ...parte(s => s[3] === 1) },
+        { nome: 'Clássico', cor: COR_CLASSICO, ...parte(s => s[3] === 0) },
     ]);
 }
 
