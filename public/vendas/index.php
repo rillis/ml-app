@@ -96,7 +96,7 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
             </div>
             <p class="text-xs text-gray-500 mb-4">Mês atual inteiro, Full e normal, sem os filtros acima. Cada linha roxa é a projeção feita na manhã de um dia, com os dias completos até a véspera; a mais forte é a de hoje.</p>
             <div id="graficoEvolucao" class="relative"></div>
-            <h3 class="text-sm font-semibold text-gray-300 mt-6 mb-2">Fechamento projetado com os dados até cada dia</h3>
+            <h3 class="text-sm font-semibold text-gray-300 mt-6 mb-2">Fechamento projetado em cada dia</h3>
             <div id="graficoFechamentos" class="relative"></div>
         </section>
 
@@ -781,8 +781,9 @@ function renderizarEvolucao() {
         return `<circle cx="${x(p.j).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="4" fill="${p.cor}" stroke="${COR_FUNDO}" stroke-width="2"/>` + rotulo(x(p.j) - 8, py, p.texto, 'end');
     }).join('');
     const pular = Math.ceil(tamanho / Math.max(1, Math.floor(util / 30)));
-    const eixo = Array.from({ length: tamanho }, (_, j) => j).filter(j => j > 0 && (j % pular === 0 || j === 1))
-        .map(j => `<text x="${x(j).toFixed(1)}" y="${altura - 8}" text-anchor="middle" fill="${COR_TEXTO_EIXO}" font-size="11">${j}</text>`).join('');
+    // Eixo pelo dia da projeção: a posição j (fim do dia j) é a manhã do dia j + 1
+    const diasEixo = Array.from({ length: N }, (_, j) => j + 1).filter(r => r === 1 || r % pular === 0 || r === N);
+    const eixo = diasEixo.map(r => `<text x="${x(r - 1).toFixed(1)}" y="${altura - 8}" text-anchor="${r === 1 ? 'start' : 'middle'}" fill="${COR_TEXTO_EIXO}" font-size="11">${r}</text>`).join('');
 
     area.innerHTML = `<svg width="${largura}" height="${altura}" role="img" aria-label="Acumulado do mês com ${projecoes.length} projeções, uma por dia, e o mês anterior inteiro" class="block" style="touch-action:pan-y">
         ${grade(passos, y, margem.esquerda, largura - margem.direita)}
@@ -809,8 +810,7 @@ function renderizarEvolucao() {
     const yF = v => mF.topo + altUtilF - (v - baseF) / (topoF - baseF) * altUtilF;
     const refY = yF(anterior[Nant]);
     const pontosF = projecoes.map(p => `<circle data-ponto-r="${p.r}" cx="${xF(p.r).toFixed(1)}" cy="${yF(p.total).toFixed(1)}" r="${p === ultima ? 4.5 : 3}" fill="${COR_PROJECAO}" stroke="${COR_FUNDO}" stroke-width="1.5"/>`).join('');
-    const eixoF = Array.from({ length: tamanho }, (_, j) => j).filter(j => j > 0 && (j % pular === 0 || j === 1))
-        .map(j => `<text x="${xF(j + 1).toFixed(1)}" y="${alturaF - 6}" text-anchor="middle" fill="${COR_TEXTO_EIXO}" font-size="11">${j}</text>`).join('');
+    const eixoF = diasEixo.map(r => `<text x="${xF(r).toFixed(1)}" y="${alturaF - 6}" text-anchor="${r === 1 ? 'start' : 'middle'}" fill="${COR_TEXTO_EIXO}" font-size="11">${r}</text>`).join('');
     const marcasF = [baseF + (topoF - baseF) * 0.15, (baseF + topoF) / 2, topoF - (topoF - baseF) * 0.15];
     areaFech.innerHTML = `<svg width="${larguraF}" height="${alturaF}" role="img" aria-label="Fechamento do mês projetado em cada dia" class="block">
         ${marcasF.map(v => `<line x1="${mF.esquerda}" x2="${larguraF - mF.direita}" y1="${yF(v).toFixed(1)}" y2="${yF(v).toFixed(1)}" stroke="${COR_GRADE}"/><text x="${mF.esquerda - 8}" y="${(yF(v) + 4).toFixed(1)}" text-anchor="end" fill="${COR_TEXTO_EIXO}" font-size="11">${moedaCurta(v)}</text>`).join('')}
@@ -835,9 +835,7 @@ function renderizarEvolucao() {
         const mira = marcador.querySelector('[data-mira]');
         mira.setAttribute('x1', x(r - 1)); mira.setAttribute('x2', x(r - 1));
         const dia = somarDias(inicio, r - 1);
-        const titulo = r > 1
-            ? `Projeção com dados até ${dataCurta(somarDias(dia, -1)).slice(0, 5)} <span class="font-normal text-gray-400">(manhã de ${dataCurta(dia).slice(0, 5)})</span>`
-            : `Projeção da manhã de ${dataCurta(dia).slice(0, 5)} <span class="font-normal text-gray-400">(sem dias completos)</span>`;
+        const titulo = `Projeção do dia ${dataCurta(dia).slice(0, 5)} <span class="font-normal text-gray-400">(${r > 1 ? 'dados até ' + dataCurta(somarDias(dia, -1)).slice(0, 5) : 'sem dias completos'})</span>`;
         mostrarDica(e, `<div class="font-semibold mb-1">${titulo}</div>`
             + (p ? linhaDica(COR_PROJECAO, 'Fechamento projetado', moeda(p.total)) : '<div class="text-gray-400">Sem projeção neste dia</div>')
             + linhaDica(COR_ATUAL, `Realizado até ${dataCurta(somarDias(dia, -1)).slice(0, 5)}`, moeda(realizado[r - 1]))
