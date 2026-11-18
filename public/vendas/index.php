@@ -104,7 +104,7 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
         <section class="<?= $classeCartao ?>">
             <div class="flex flex-wrap justify-between items-baseline gap-2 mb-4">
                 <h2 class="text-lg font-semibold text-gray-200">Cancelamentos por mês</h2>
-                <div class="flex gap-4 text-sm text-gray-300"><span class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-sm" style="background:#e66767"></span>Valor cancelado</span></div>
+                <div id="legendaCancelamentos" class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-300"></div>
             </div>
             <div id="graficoCancelamentos" class="relative"></div>
         </section>
@@ -151,7 +151,9 @@ const COR_REAL_NORMAL = '#2f6fd6';
 const COR_PROJ_FULL = '#c4b5fd';
 const COR_PROJ_NORMAL = '#7c4ddb';
 const COR_PROJECAO = '#a78bfa';
-const COR_CANCELADO = '#e66767';
+// Cancelamentos: realizado mais escuro, projeção do mês atual mais clara
+const COR_CANCELADO = '#d04545';
+const COR_CANCELADO_PROJ = '#f2a0a0';
 // Erro médio do backtest (fev–out/2026) da projeção, pelo dia do mês
 const ERRO_PROJECAO = [[3, 17.8], [7, 14.5], [10, 9.8], [15, 6.3], [20, 4.6], [25, 4.5]];
 const COR_COMPARACAO = '#9ca3af';
@@ -777,14 +779,26 @@ function renderizarCancelamentos() {
         const c = cancelados.get(m) || { vendas: 0, valor: 0 };
         const v = validos.get(m) || { vendas: 0, valor: 0 };
         const bruto = c.valor + v.valor;
-        return { ...c, pctValor: bruto ? c.valor / bruto * 100 : 0, pctVendas: c.vendas + v.vendas ? c.vendas / (c.vendas + v.vendas) * 100 : 0 };
+        return { ...c, pctValor: bruto ? c.valor / bruto * 100 : 0, pctVendas: c.vendas + v.vendas ? c.vendas / (c.vendas + v.vendas) * 100 : 0, projetado: 0 };
     });
+
+    // Projeção do mês atual: mantém o % cancelado do mês até agora sobre o valor vendido projetado.
+    // % = cancelado ÷ (válidas + canceladas), então cancelado final = válidas projetadas × % ÷ (1 − %).
+    const proj = projecaoM0();
+    const iAtual = meses.indexOf(mesAtual);
+    if (proj && iAtual >= 0 && info[iAtual].pctValor < 100) {
+        const validasProjetadas = (logisticas.has(0) ? proj.real[0] : 0) + (logisticas.has(1) ? proj.real[1] : 0) + proj.restante * parteProjetada(proj);
+        const parte = info[iAtual].pctValor / 100;
+        info[iAtual].projetado = Math.max(0, validasProjetadas * parte / (1 - parte) - info[iAtual].valor);
+    }
+    const temProjecao = iAtual >= 0 && info[iAtual].projetado > 0;
+    document.getElementById('legendaCancelamentos').innerHTML = legenda([[COR_CANCELADO, 'Cancelado'], ...(temProjecao ? [[COR_CANCELADO_PROJ, 'Projeção']] : [])]);
 
     const largura = area.clientWidth;
     const margem = { esquerda: 76, direita: 8, topo: 18, baixo: 28 };
     const util = largura - margem.esquerda - margem.direita;
     const alturaUtil = ALTURA_GRAFICO - margem.topo - margem.baixo;
-    const { topo, passos } = escalaY(Math.max(1, ...info.map(i => i.valor)));
+    const { topo, passos } = escalaY(Math.max(1, ...info.map(i => i.valor + i.projetado)));
     const y = v => margem.topo + alturaUtil - v / topo * alturaUtil;
     const faixa = util / meses.length;
     const barra = Math.min(24, faixa * 0.6);
@@ -792,13 +806,20 @@ function renderizarCancelamentos() {
 
     const colunas = meses.map((mes, i) => {
         const x = margem.esquerda + faixa * i + (faixa - barra) / 2;
-        const { valor } = info[i];
-        const alto = y(0) - y(valor);
+        const { valor, projetado } = info[i];
+        // Ponta arredondada só no segmento do topo; 2px de respiro entre realizado e projeção
+        const segmento = (base, v, cor, topoDaColuna) => {
+            const yBase = y(base) - (base > 0 ? 2 : 0), t = y(base + v), alto = yBase - t;
+            if (alto <= 0) return '';
+            if (!topoDaColuna) return `<rect x="${x}" y="${t}" width="${barra}" height="${alto}" fill="${cor}"/>`;
+            const r = Math.min(4, alto, barra / 2);
+            return `<path d="M${x},${yBase} V${t + r} Q${x},${t} ${x + r},${t} H${x + barra - r} Q${x + barra},${t} ${x + barra},${t + r} V${yBase} Z" fill="${cor}"/>`;
+        };
         let marca = '';
-        if (alto > 0) {
-            const r = Math.min(4, alto, barra / 2), t = y(valor);
-            marca = `<path d="M${x},${y(0)} V${t + r} Q${x},${t} ${x + r},${t} H${x + barra - r} Q${x + barra},${t} ${x + barra},${t + r} V${y(0)} Z" fill="${COR_CANCELADO}"/>`
-                + `<text x="${(x + barra / 2).toFixed(1)}" y="${(t - 5).toFixed(1)}" text-anchor="middle" fill="${COR_TEXTO_ROTULO}" font-size="${faixa < 40 ? 9 : 11}" style="font-variant-numeric:tabular-nums">${milhar(valor, faixa < 40 ? 0 : 1)}</text>`;
+        if (valor > 0) marca += segmento(0, valor, COR_CANCELADO, projetado <= 0);
+        if (projetado > 0) marca += segmento(valor, projetado, COR_CANCELADO_PROJ, true);
+        if (valor + projetado > 0) {
+            marca += `<text x="${(x + barra / 2).toFixed(1)}" y="${(y(valor + projetado) - 5).toFixed(1)}" text-anchor="middle" fill="${COR_TEXTO_ROTULO}" font-size="${faixa < 40 ? 9 : 11}" style="font-variant-numeric:tabular-nums">${milhar(valor + projetado, faixa < 40 ? 0 : 1)}</text>`;
         }
         const ultimo = i === meses.length - 1;
         const rotulo = (meses.length - 1 - i) % pularRotulo === 0
@@ -808,13 +829,18 @@ function renderizarCancelamentos() {
 
     area.innerHTML = `<svg width="${largura}" height="${ALTURA_GRAFICO}" role="img" aria-label="Valor cancelado por mês da venda" class="block">
         ${grade(passos, y, margem.esquerda, largura - margem.direita)}${colunas}</svg>
-        <p class="text-xs text-gray-500 mt-1">Pelo mês da venda. % = parte do valor vendido no mês (válidas + canceladas) que foi cancelada.</p>`;
+        <p class="text-xs text-gray-500 mt-1">Pelo mês da venda. % = parte do valor vendido no mês (válidas + canceladas) que foi cancelada.${temProjecao ? ' Projeção: o mesmo % do mês atual aplicado à projeção de vendas.' : ''}</p>`;
 
     area.querySelectorAll('[data-alvo]').forEach(alvo => {
         const i = Number(alvo.dataset.alvo);
         alvo.addEventListener('pointermove', e => mostrarDica(e, `<div class="font-semibold mb-1">${mesCurto(meses[i])}${meses[i] === mesAtual ? ' (parcial)' : ''}</div>`
             + linhaDica(COR_CANCELADO, 'Valor cancelado', `${moeda(info[i].valor)} · ${pct(info[i].pctValor)}`)
-            + `<div class="flex justify-between gap-4 text-gray-300"><span>Vendas canceladas</span><span class="tabular-nums">${inteiro(info[i].vendas)} · ${pct(info[i].pctVendas)}</span></div>`));
+            + `<div class="flex justify-between gap-4 text-gray-300"><span>Vendas canceladas</span><span class="tabular-nums">${inteiro(info[i].vendas)} · ${pct(info[i].pctVendas)}</span></div>`
+            + (info[i].projetado > 0
+                ? `<div class="mt-2"></div>` + linhaDica(COR_CANCELADO_PROJ, 'Projeção', '+ ' + moeda(info[i].projetado))
+                  + `<div class="flex justify-between gap-4 border-t border-gray-700 mt-1 pt-1 font-semibold"><span>Cancelado no mês (proj.)</span><span class="tabular-nums">${moeda(info[i].valor + info[i].projetado)}</span></div>`
+                  + `<div class="text-xs text-gray-400 mt-1">Mantém os ${pct(info[i].pctValor)} cancelados até agora sobre a projeção do mês</div>`
+                : '')));
         alvo.addEventListener('pointerleave', esconderDica);
     });
 }
