@@ -11,7 +11,7 @@ PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`
 | `/dash/` | Últimos eventos do ML (vendas, perguntas, mensagens, reclamações), boletos dos próximos 15 dias e logs do container `ml-jrf` | `ml_jrf`, `ml_boletos` |
 | `/dash/fila/` | Fila do webhook do ml-jrf: pendentes, falhas, botões de reprocessar e descartar | `ml_jrf.webhook_queue` |
 | `/boletos/` | Cadastro de boletos (com leitura de PDF via pdf.js), vencimento ajustado a feriados, insights | `ml_boletos` |
-| `/vendas/` | Vendas do ML copiadas para o banco: comparativo entre períodos (datas livres, padrão mês até hoje; contra o período anterior, o período anterior em dias úteis ou o mesmo período do ano passado), faturamento por mês (Full × normal), acumulado do período, Premium × Clássico e tabela por SKU. Canceladas ficam fora | `ml_vendas` (esquema em `sql/ml_vendas.sql`) |
+| `/vendas/` | Vendas do ML copiadas para o banco: comparativo entre períodos (datas livres, padrão mês até hoje; contra o período anterior, o período anterior em dias úteis ou o mesmo período do ano passado), faturamento por mês (Full × normal), acumulado do período, Premium × Clássico, faturamento por dia da semana e tabela por SKU. Canceladas ficam fora | `ml_vendas` (esquema em `sql/ml_vendas.sql`) |
 | `/estoque/` | Estoque local por SKU, com histórico (a lista de SKUs vem de `src/estoque/sku.csv`) | `ml_estoque` |
 | `/contas/` | Contas pessoais mensais, leitura de fatura de cartão em PDF, parcelas e insights | `contas_pessoais` (esquema em `sql/contas_pessoais.sql`) |
 | `/home/resumo.php` | JSON para os cards da home (home.rillis.com.br): boletos em aberto por nível e se o mês atual das contas foi salvo | `ml_boletos`, `contas_pessoais` |

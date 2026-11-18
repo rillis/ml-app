@@ -93,6 +93,14 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
         </div>
 
         <section class="<?= $classeCartao ?>">
+            <div class="flex flex-wrap justify-between items-baseline gap-2 mb-4">
+                <h2 class="text-lg font-semibold text-gray-200">Faturamento por dia da semana</h2>
+                <div id="legendaSemana" class="flex gap-4 text-sm text-gray-300"></div>
+            </div>
+            <div id="graficoSemana" class="relative"></div>
+        </section>
+
+        <section class="<?= $classeCartao ?>">
             <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
                 <h2 class="text-lg font-semibold text-gray-200">SKUs no período</h2>
                 <input id="buscaSku" placeholder="Buscar SKU ou título..." oninput="renderizarSkus()"
@@ -294,6 +302,7 @@ function renderizar() {
     renderizarMensal();
     renderizarAcumulado(p, atual, comp, temBase);
     renderizarDivisoes(atual, comp, temBase);
+    renderizarSemana(p.atual);
     mostrarTodosSkus = false;
     renderizarSkus();
 }
@@ -523,6 +532,60 @@ function renderizarDivisoes(atual, comp, temBase) {
         { nome: 'Premium', cor: COR_PREMIUM, ...parte(s => s[3] === 1) },
         { nome: 'Clássico', cor: COR_CLASSICO, ...parte(s => s[3] === 0) },
     ]);
+}
+
+// Participação de cada dia da semana no faturamento: histórico inteiro × período escolhido
+function renderizarSemana({ de, ate }) {
+    const area = document.getElementById('graficoSemana');
+    const NOMES = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
+    const somar = filtro => {
+        const v = [0, 0, 0, 0, 0, 0, 0];
+        dados.dias.forEach(([dia, full, , fat]) => {
+            if (logisticas.has(full) && filtro(dia)) v[(paraData(dia).getDay() + 6) % 7] += fat;
+        });
+        const total = soma(v);
+        return { valores: v, partes: v.map(x => total ? x / total * 100 : 0) };
+    };
+    const series = [
+        { nome: 'Histórico', cor: COR_COMPARACAO, ...somar(() => true) },
+        { nome: 'Período', cor: COR_ATUAL, ...somar(dia => dia >= de && dia <= ate) },
+    ];
+    document.getElementById('legendaSemana').innerHTML = legenda(series.map(s => [s.cor, s.nome]));
+
+    const largura = area.clientWidth;
+    const margem = { esquerda: 44, direita: 8, topo: 12, baixo: 28 };
+    const util = largura - margem.esquerda - margem.direita;
+    const alturaUtil = ALTURA_GRAFICO - margem.topo - margem.baixo;
+    const maximo = Math.max(...series.flatMap(s => s.partes));
+    const passo = maximo > 20 ? 10 : 5;
+    const topo = Math.max(passo, Math.ceil(maximo / passo) * passo);
+    const y = v => margem.topo + alturaUtil - v / topo * alturaUtil;
+    const faixa = util / 7;
+    const barra = Math.min(24, (faixa * 0.7 - 2) / 2);
+    const marcas = [];
+    for (let v = 0; v <= topo; v += passo) marcas.push(v);
+    const grade = marcas.map(v => `
+        <line x1="${margem.esquerda}" x2="${largura - margem.direita}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="${v === 0 ? COR_BASE : COR_GRADE}" stroke-width="1"/>
+        <text x="${margem.esquerda - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end" fill="${COR_TEXTO_EIXO}" font-size="11">${v}%</text>`).join('');
+    const coluna = (x, v, cor) => {
+        const alto = y(0) - y(v);
+        if (alto <= 0) return '';
+        const r = Math.min(4, alto, barra / 2), t = y(v);
+        return `<path d="M${x},${y(0)} V${t + r} Q${x},${t} ${x + r},${t} H${x + barra - r} Q${x + barra},${t} ${x + barra},${t + r} V${y(0)} Z" fill="${cor}"/>`;
+    };
+    const grupos = NOMES.map((nome, i) => {
+        const x0 = margem.esquerda + faixa * i + (faixa - (barra * 2 + 2)) / 2;
+        return series.map((s, k) => coluna(x0 + k * (barra + 2), s.partes[i], s.cor)).join('')
+            + `<text x="${(margem.esquerda + faixa * i + faixa / 2).toFixed(1)}" y="${ALTURA_GRAFICO - 8}" text-anchor="middle" fill="${COR_TEXTO_EIXO}" font-size="11">${nome}</text>`
+            + `<rect data-dia="${i}" x="${margem.esquerda + faixa * i}" y="${margem.topo}" width="${faixa}" height="${alturaUtil}" fill="transparent"/>`;
+    }).join('');
+    area.innerHTML = `<svg width="${largura}" height="${ALTURA_GRAFICO}" role="img" aria-label="Participação de cada dia da semana no faturamento, histórico e período" class="block">${grade}${grupos}</svg>`;
+    area.querySelectorAll('[data-dia]').forEach(alvo => {
+        const i = Number(alvo.dataset.dia);
+        alvo.addEventListener('pointermove', e => mostrarDica(e, `<div class="font-semibold mb-1">${NOMES[i]}</div>`
+            + series.map(s => linhaDica(s.cor, s.nome, `${pct(s.partes[i])} · ${moeda(s.valores[i])}`)).join('')));
+        alvo.addEventListener('pointerleave', esconderDica);
+    });
 }
 
 function porSku(linhas) {
