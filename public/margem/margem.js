@@ -542,6 +542,20 @@ async function simular() {
 
 // ===================================================================== eventos
 
+// Taxa em %: taxa em R$ ÷ valor total, no formato 16.50%
+function numeroDigitado(texto) {
+    let t = String(texto).replace(/R\$|\s/g, '');
+    if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+    return t === '' ? NaN : Number(t);
+}
+function calcularPct() {
+    const total = numeroDigitado($('#pctTotal').value), taxa = numeroDigitado($('#pctTaxa').value);
+    const ok = total > 0 && taxa >= 0;
+    $('#pctResultado').textContent = ok ? (taxa / total * 100).toFixed(2) + '%' : '—';
+    $('#pctResultado').classList.toggle('text-gray-500', !ok);
+    $('#pctResultado').classList.toggle('text-blue-300', ok);
+}
+
 // Soma das três partes da margem alvo enquanto digita
 function somarMeta() {
     const v = s => parseFloat(String($(s).value).replace(',', '.')) || 0;
@@ -600,6 +614,13 @@ function ligarEventos() {
     });
     $('#btnMetasCancelar').addEventListener('click', () => $('#formMetas').classList.add('hidden'));
     $('#formSimular').addEventListener('submit', e => { e.preventDefault(); simular(); });
+    ['#pctTotal', '#pctTaxa'].forEach(c => $(c).addEventListener('input', calcularPct));
+    $('#pctResultado').addEventListener('click', async () => {
+        const v = $('#pctResultado').textContent;
+        if (v === '—') return;
+        try { await navigator.clipboard.writeText(v); ML.toast(`Copiado: ${v}`, 'sucesso'); }
+        catch (erro) { ML.toast('Não foi possível copiar.', 'erro'); }
+    });
     ['#campoLucro', '#campoGordura', '#campoImposto'].forEach(s => $(s).addEventListener('input', somarMeta));
 
     // Atualizar só alguns anúncios: os códigos MLB colados viram a lista, sem repetir

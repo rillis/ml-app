@@ -200,6 +200,20 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
                 </form>
                 <div id="resultadoSimular" class="mt-4 empty:hidden" aria-live="polite"></div>
             </section>
+            <!-- Conta rápida, separada do simulador: taxa em R$ ÷ valor total -->
+            <section class="<?= $classeCartao ?>">
+                <h2 class="text-lg font-semibold text-gray-200">Taxa em %</h2>
+                <p class="text-sm text-gray-400 mt-1 mb-4">Taxa em R$ ÷ valor total.</p>
+                <div class="flex flex-wrap items-end gap-3">
+                    <label class="text-sm text-gray-400 flex flex-col gap-1">Valor total (R$)
+                        <input id="pctTotal" type="text" inputmode="decimal" placeholder="100,00" class="<?= $classeCampo ?> w-32">
+                    </label>
+                    <label class="text-sm text-gray-400 flex flex-col gap-1">Taxa (R$)
+                        <input id="pctTaxa" type="text" inputmode="decimal" placeholder="16,50" class="<?= $classeCampo ?> w-32">
+                    </label>
+                    <button type="button" id="pctResultado" title="Clique para copiar" class="text-2xl font-bold tabular-nums text-gray-500 py-1 px-2 rounded-lg hover:bg-gray-700 cursor-copy">—</button>
+                </div>
+            </section>
         </div>
 
         <!-- ===== SKUS ===== -->
