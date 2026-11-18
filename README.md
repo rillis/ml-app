@@ -49,11 +49,11 @@ mysql < sql/ml_vendas.sql
 
 ## Full (`/full/`)
 
-O Atualizar (o mesmo de Vendas) também busca todos os anúncios Full, ativos e pausados, e o estoque de cada um no ML (`/inventories/{id}/stock/fulfillment`). Anúncios que dividem o mesmo estoque (mesmo `inventory_id`) viram uma linha só. Cada atualização também grava uma foto do estoque do dia em `full_estoque_dia`.
+O Atualizar (o mesmo de Vendas) também busca todos os anúncios Full, ativos e pausados, e o estoque de cada um no ML (`/inventories/{id}/stock/fulfillment`). A tela tem uma linha por anúncio (com o ID), porque o que vai para o Full fica preso ao anúncio e cada anúncio vende diferente. Anúncios que o ML junta no mesmo estoque (mesmo `inventory_id`) são calculados juntos: a quantidade aparece na linha do que mais vende. Cada atualização também grava uma foto do estoque do dia em `full_estoque_dia`.
 
 Sugestão por anúncio, com os parâmetros da tela (ciclo, prazo e segurança, guardados no navegador):
 
-- **Venda por dia:** a maior média entre os últimos 30 e 60 dias completos, só das vendas pelo Full.
+- **Venda por dia:** a maior média entre os últimos 30 e 60 dias completos, só das vendas pelo Full daquele anúncio.
 - **Enviar até:** o dia em que o estoque entra na margem (prazo + segurança).
 - **Entra no envio de hoje:** quem não aguenta até o próximo envio (um ciclo). A quantidade cobre prazo + ciclo + segurança.
 - **Local:** estoque do módulo Estoque pelo SKU, para saber se dá para mandar.

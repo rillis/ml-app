@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS ml_vendas.full_anuncios (
     inventory_id VARCHAR(30) PRIMARY KEY,
     anuncio VARCHAR(30) NOT NULL,
     variacao BIGINT UNSIGNED NULL,
-    -- todos os anúncios que vendem deste estoque: [{"id": "MLB...", "variacao": null}]
+    -- todos os anúncios que vendem deste estoque: [{"id", "variacao", "sku", "titulo", "status", "sub_status"}]
     anuncios JSON NOT NULL,
     sku VARCHAR(100) NOT NULL DEFAULT '',
     titulo VARCHAR(255) NOT NULL DEFAULT '',

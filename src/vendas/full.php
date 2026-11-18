@@ -47,11 +47,16 @@ function vendas_full_sku(array $atributos, ?string $campoLivre): string
     return (string) ($campoLivre ?? '');
 }
 
-// Anúncios diferentes (ex.: Clássico e Premium) podem dividir o mesmo estoque: junta pelo inventory_id.
+// Anúncios diferentes (ex.: Clássico e Premium) podem dividir o mesmo estoque: junta pelo inventory_id,
+// guardando os dados de cada anúncio em `anuncios`.
 // Fica ativo se algum anúncio estiver ativo; o título e o SKU vêm do primeiro ativo.
 function vendas_full_juntar(array &$linhas, string $inv, array $linha): void
 {
-    $linha['anuncios'] = [['id' => $linha['anuncio'], 'variacao' => $linha['variacao']]];
+    // Cada anúncio guarda os próprios dados: a aba Full mostra uma linha por anúncio
+    $linha['anuncios'] = [[
+        'id' => $linha['anuncio'], 'variacao' => $linha['variacao'], 'sku' => $linha['sku'],
+        'titulo' => $linha['titulo'], 'status' => $linha['status'], 'sub_status' => $linha['sub_status'],
+    ]];
     if (!isset($linhas[$inv])) {
         $linhas[$inv] = $linha;
         return;

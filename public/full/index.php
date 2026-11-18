@@ -41,7 +41,7 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
                 <input id="seguranca" type="number" min="0" max="60" inputmode="numeric" class="<?= $classeCampo ?> w-full sm:w-32" oninput="aoMudarParametro()">
             </label>
         </div>
-        <p class="text-xs text-gray-500 mb-6">Venda por dia = a maior média entre os últimos 30 e 60 dias completos, só das vendas pelo Full. Cada envio cobre prazo + ciclo + segurança. Unidades já enviadas que o ML ainda não recebeu não aparecem no estoque.</p>
+        <p class="text-xs text-gray-500 mb-6">Uma linha por anúncio: o que vai para o Full fica preso ao anúncio. Venda por dia = a maior média entre os últimos 30 e 60 dias completos, só das vendas pelo Full daquele anúncio. Cada envio cobre prazo + ciclo + segurança. Anúncios que o ML junta no mesmo estoque são calculados juntos. Unidades já enviadas que o ML ainda não recebeu não aparecem no estoque.</p>
 
         <div id="resumo" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6"></div>
 
@@ -52,7 +52,7 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
                     <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
                         <input id="mostrarSemVenda" type="checkbox" class="w-4 h-4 accent-blue-500" onchange="renderizar()"> Mostrar sem vendas
                     </label>
-                    <button id="btnCopiar" onclick="copiarEnvio()" title="Copiar SKU e quantidade do envio"
+                    <button id="btnCopiar" onclick="copiarEnvio()" title="Copiar anúncio, SKU e quantidade do envio"
                             class="bg-gray-900 hover:bg-gray-700 border border-gray-700 hover:border-blue-500 text-gray-300 hover:text-blue-400 rounded-lg px-3 py-2 text-sm transition-colors">📋 Copiar envio</button>
                 </div>
             </div>
@@ -60,7 +60,7 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
                 <table class="w-full text-sm">
                     <thead class="text-gray-400 border-b border-gray-700">
                         <tr>
-                            <th class="text-left font-medium py-2 pr-3">Anúncio</th>
+                            <th class="text-left font-medium py-2 pr-3">Anúncio e SKU</th>
                             <th class="text-right font-medium py-2 px-2 sm:px-3">Full</th>
                             <th class="text-right font-medium py-2 px-2 sm:px-3 hidden sm:table-cell">Local</th>
                             <th class="text-right font-medium py-2 px-2 sm:px-3 whitespace-nowrap hidden sm:table-cell">Vende/dia</th>
@@ -69,7 +69,7 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
                             <th class="text-right font-medium py-2 pl-2 sm:pl-3">Enviar</th>
                         </tr>
                     </thead>
-                    <tbody id="tabela"></tbody>
+                    <tbody id="tabela" class="border-b border-gray-700/60"></tbody>
                 </table>
             </div>
         </section>
@@ -107,35 +107,53 @@ function aoMudarParametro() {
 }
 
 // ===== Cálculo =====
+// Uma linha por anúncio (e variação): cada anúncio vende do seu jeito e o que vai para o Full fica preso a ele.
+// Exceção: anúncios que o ML junta no mesmo estoque (mesmo inventory_id). Aí a conta de estoque é do grupo,
+// com a soma das vendas, e a quantidade aparece só na linha principal (a que mais vende).
 function calcular() {
     const { ciclo, prazo, seguranca } = parametros();
     const hoje = paraTexto(new Date());
     const ontem = somarDias(hoje, -1);
     const desde30 = somarDias(ontem, -29), desde60 = somarDias(ontem, -59);
-    const vendidos = new Map();
-    dados.vendas.forEach(([inv, dia, un]) => {
+    const vendidos = new Map(); // chave: anúncio (todas as variações) e anúncio:variação
+    dados.vendas.forEach(([anuncio, variacao, dia, un]) => {
         if (dia > ontem || dia < desde60) return; // só dias completos
-        const v = vendidos.get(inv) || { d30: 0, d60: 0 };
-        v.d60 += un;
-        if (dia >= desde30) v.d30 += un;
-        vendidos.set(inv, v);
+        [anuncio, variacao !== null ? `${anuncio}:${variacao}` : null].filter(Boolean).forEach(chave => {
+            const v = vendidos.get(chave) || { d30: 0, d60: 0 };
+            v.d60 += un;
+            if (dia >= desde30) v.d30 += un;
+            vendidos.set(chave, v);
+        });
     });
 
-    return dados.anuncios.map(a => {
-        const v = vendidos.get(a.inventory) || { d30: 0, d60: 0 };
+    const linhas = dados.anuncios.map(a => {
+        const v = vendidos.get(a.variacao !== null ? `${a.anuncio}:${a.variacao}` : a.anuncio) || { d30: 0, d60: 0 };
         const media30 = v.d30 / 30, media60 = v.d60 / 60;
-        const porDia = Math.max(media30, media60);
-        const cobertura = porDia > 0 ? a.disponivel / porDia : Infinity;
+        return { ...a, media30, media60, porDia: Math.max(media30, media60), local: dados.local[(a.sku || '').toUpperCase()] };
+    });
+
+    const grupos = new Map();
+    linhas.forEach(l => { if (!grupos.has(l.inventory)) grupos.set(l.inventory, []); grupos.get(l.inventory).push(l); });
+    grupos.forEach(grupo => {
+        grupo.sort((x, y) => y.porDia - x.porDia || Number(y.ativo) - Number(x.ativo));
+        const disponivel = grupo[0].disponivel;
+        const porDia = grupo.reduce((t, l) => t + l.porDia, 0);
+        const cobertura = porDia > 0 ? disponivel / porDia : Infinity;
         // Dias até precisar criar o envio: o que chega tem que chegar antes de entrar na margem de segurança
         const folga = porDia > 0 ? cobertura - (prazo + seguranca) : Infinity;
-        const alvo = porDia * (prazo + ciclo + seguranca);
-        const quantidade = porDia > 0 ? Math.max(0, Math.ceil(alvo - a.disponivel)) : 0;
+        const quantidade = porDia > 0 ? Math.max(0, Math.ceil(porDia * (prazo + ciclo + seguranca) - disponivel)) : 0;
         // Entra no envio de hoje quem não aguenta até o próximo envio (daqui a um ciclo)
         const noEnvio = porDia > 0 && folga < ciclo && quantidade > 0;
         const situacao = porDia === 0 ? 'sem_venda' : folga <= 0 ? 'atrasado' : noEnvio ? 'ciclo' : 'ok';
-        const local = dados.local[(a.sku || '').toUpperCase()];
-        return { ...a, media30, media60, porDia, cobertura, folga, quantidade, noEnvio, situacao, local, limite: Number.isFinite(folga) ? somarDias(hoje, Math.max(0, Math.floor(folga))) : null };
-    }).sort((x, y) => x.folga - y.folga || y.porDia - x.porDia || x.sku.localeCompare(y.sku));
+        const limite = Number.isFinite(folga) ? somarDias(hoje, Math.max(0, Math.floor(folga))) : null;
+        grupo.forEach((l, k) => Object.assign(l, {
+            principal: k === 0, grupo: grupo.length, demandaGrupo: porDia, cobertura, folga, quantidade, noEnvio: noEnvio && k === 0,
+            noEnvioGrupo: noEnvio, situacao, limite,
+        }));
+    });
+    return [...grupos.values()]
+        .sort((a, b) => a[0].folga - b[0].folga || b[0].demandaGrupo - a[0].demandaGrupo || a[0].sku.localeCompare(b[0].sku))
+        .flat();
 }
 
 // ===== Tela =====
@@ -157,7 +175,7 @@ function renderizar() {
     const { ciclo } = parametros();
     const linhas = calcular();
     linhasEnvio = linhas.filter(l => l.noEnvio);
-    const comVenda = linhas.filter(l => l.porDia > 0);
+    const comVenda = linhas.filter(l => l.principal && l.demandaGrupo > 0);
     const proximo = comVenda.length ? comVenda[0] : null;
     const hoje = paraTexto(new Date());
     const unidades = linhasEnvio.reduce((t, l) => t + l.quantidade, 0);
@@ -167,7 +185,7 @@ function renderizar() {
     let proximoTexto = '—', proximoDetalhe = 'nenhum anúncio com vendas', destaque = '';
     if (proximo) {
         if (proximo.folga <= 0) {
-            proximoTexto = 'Hoje'; proximoDetalhe = `${proximo.sku || proximo.titulo} já está na margem de segurança`; destaque = 'border-red-500/60';
+            proximoTexto = 'Hoje'; proximoDetalhe = `${esc(proximo.sku || proximo.titulo)} (${proximo.anuncio}) já está na margem de segurança`; destaque = 'border-red-500/60';
         } else {
             const dias = Math.floor(proximo.folga);
             proximoTexto = dias === 0 ? 'Hoje' : `${DIAS_SEMANA[paraData(proximo.limite).getDay()]} ${dataCurta(proximo.limite)}`;
@@ -182,27 +200,34 @@ function renderizar() {
         cartao('Zerados no Full', zerados, 'anúncios com vendas e 0 disponível', zerados ? 'border-red-500/60' : ''),
     ].join('');
 
-    // Mesmo SKU com estoque em outro anúncio Full: vale conferir antes de mandar mais
+    // Mesmo SKU com estoque em outro anúncio Full (outro estoque): só informativo, o estoque não passa de um para o outro
     const porSku = new Map();
-    linhas.forEach(l => { if (l.sku) porSku.set(l.sku.toUpperCase(), (porSku.get(l.sku.toUpperCase()) || 0) + l.disponivel); });
+    linhas.filter(l => l.principal).forEach(l => { if (l.sku) porSku.set(l.sku.toUpperCase(), (porSku.get(l.sku.toUpperCase()) || 0) + l.disponivel); });
     const emOutro = l => (l.sku ? porSku.get(l.sku.toUpperCase()) - l.disponivel : 0);
 
     const mostrarSemVenda = document.getElementById('mostrarSemVenda').checked;
-    const visiveis = linhas.filter(l => mostrarSemVenda || l.porDia > 0);
+    // Esconde só grupos inteiros sem venda, para não separar anúncios do mesmo estoque
+    const visiveis = linhas.filter(l => mostrarSemVenda || l.demandaGrupo > 0);
     document.getElementById('tabela').innerHTML = visiveis.length ? visiveis.map(l => {
         const [rotulo, classe] = ROTULO_SITUACAO[l.situacao];
         const dura = !Number.isFinite(l.cobertura) ? '—' : l.cobertura >= 999 ? '999+' : `${Math.floor(l.cobertura)} d`;
         const localTexto = l.local === undefined ? '<span class="text-gray-600">—</span>'
             : `<span class="${l.noEnvio && l.local < l.quantidade ? 'text-amber-300' : ''}">${l.local}</span>`;
-        const outros = l.anuncios.length > 1 ? ` · ${l.anuncios.length} anúncios` : '';
-        return `<tr class="border-b border-gray-700/60 ${l.noEnvio ? '' : 'text-gray-300'}">
+        const link = `https://produto.mercadolivre.com.br/${l.anuncio.replace(/^MLB/, 'MLB-')}`;
+        const dividido = l.compartilha.length
+            ? `<div class="text-xs text-violet-300">estoque dividido com ${l.compartilha.map(esc).join(', ')}${l.principal ? '' : ' · sugestão na linha de cima'}</div>` : '';
+        const enviar = l.noEnvio ? l.quantidade
+            : !l.principal && l.noEnvioGrupo ? '<span class="font-normal text-violet-300" title="Mesmo estoque do anúncio de cima">↑</span>'
+            : l.demandaGrupo > 0 ? '<span class="font-normal">—</span>' : '';
+        return `<tr class="${l.principal || l.grupo === 1 ? 'border-t' : ''} border-gray-700/60 ${l.noEnvio ? '' : 'text-gray-300'}">
             <td class="py-2 pr-2 sm:pr-3 max-w-[9.5rem] sm:max-w-none">
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>
-                    <span class="text-[11px] px-1.5 py-0.5 rounded border ${classe} whitespace-nowrap">${rotulo}</span>
+                    ${l.principal ? `<span class="text-[11px] px-1.5 py-0.5 rounded border ${classe} whitespace-nowrap">${rotulo}</span>` : ''}
                     ${l.ativo ? '' : '<span class="text-[11px] px-1.5 py-0.5 rounded border border-gray-600 text-gray-400 whitespace-nowrap">pausado</span>'}
                 </div>
-                <div class="text-xs text-gray-500 truncate sm:max-w-md" title="${esc(l.titulo)}">${esc(l.titulo)}${outros}</div>
+                <div class="text-xs truncate sm:max-w-md"><a href="${link}" target="_blank" rel="noopener" class="text-blue-400 hover:underline tabular-nums">${esc(l.anuncio)}</a><span class="text-gray-500" title="${esc(l.titulo)}"> · ${esc(l.titulo)}</span></div>
+                ${dividido}
                 ${emOutro(l) > 0 ? `<div class="text-xs text-sky-300">outro anúncio deste SKU tem ${emOutro(l)} no Full</div>` : ''}
             </td>
             <td class="py-2 px-2 sm:px-3 text-right tabular-nums">${l.disponivel}${l.indisponivel ? `<div class="text-[11px] text-gray-500" title="Unidades no Full que não estão à venda">+${l.indisponivel} indisp.</div>` : ''}</td>
@@ -210,17 +235,17 @@ function renderizar() {
             <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap hidden sm:table-cell" title="30 dias: ${decimal(l.media30, 2)}/dia · 60 dias: ${decimal(l.media60, 2)}/dia">${l.porDia > 0 ? decimal(l.porDia, 2) : '0'}</td>
             <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap ${l.situacao === 'atrasado' ? 'text-red-300' : ''}">${dura}</td>
             <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap hidden sm:table-cell">${l.limite ? (l.folga <= 0 ? '<span class="text-red-300">já passou</span>' : dataCurta(l.limite)) : '—'}</td>
-            <td class="py-2 pl-2 sm:pl-3 text-right tabular-nums font-semibold ${l.noEnvio ? 'text-white' : 'text-gray-500'}">${l.noEnvio ? l.quantidade : l.porDia > 0 ? '<span class="font-normal">—</span>' : ''}</td>
+            <td class="py-2 pl-2 sm:pl-3 text-right tabular-nums font-semibold ${l.noEnvio ? 'text-white' : 'text-gray-500'}">${enviar}</td>
         </tr>`;
     }).join('') : '<tr><td colspan="7" class="py-6 text-center text-gray-500">Nenhum anúncio no Full. Use o botão Atualizar.</td></tr>';
 }
 
 async function copiarEnvio() {
     if (!linhasEnvio.length) { ML.toast('Nada para enviar agora.', 'info'); return; }
-    const texto = linhasEnvio.map(l => `${l.sku || l.anuncio}\t${l.quantidade}`).join('\n');
+    const texto = linhasEnvio.map(l => `${l.anuncio}\t${l.sku}\t${l.quantidade}`).join('\n');
     try {
         await navigator.clipboard.writeText(texto);
-        ML.toast(`${linhasEnvio.length} anúncios copiados (SKU e quantidade).`, 'sucesso');
+        ML.toast(`${linhasEnvio.length} anúncios copiados (anúncio, SKU e quantidade).`, 'sucesso');
     } catch (e) {
         ML.toast('Não foi possível copiar.', 'erro');
     }
