@@ -49,9 +49,6 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
             <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
                 <h2 class="text-lg font-semibold text-gray-200">Sugestão por anúncio</h2>
                 <div class="flex flex-wrap items-center gap-3">
-                    <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
-                        <input id="mostrarSemVenda" type="checkbox" class="w-4 h-4 accent-blue-500" onchange="renderizar()"> Mostrar sem vendas
-                    </label>
                     <button onclick="copiarEnvio('anuncios')" title="Uma linha por anúncio: MLB... - 2x"
                             class="bg-gray-900 hover:bg-gray-700 border border-gray-700 hover:border-blue-500 text-gray-300 hover:text-blue-400 rounded-lg px-3 py-2 text-sm transition-colors">📋 Copiar envio (anúncios)</button>
                     <button onclick="copiarEnvio('skus')" title="Kits abertos e somados por SKU: KF-133 - 6x"
@@ -146,7 +143,8 @@ function calcular() {
         const quantidade = porDia > 0 ? Math.max(0, Math.ceil(porDia * (prazo + ciclo + seguranca) - disponivel)) : 0;
         // Entra no envio de hoje quem não aguenta até o próximo envio (daqui a um ciclo)
         const noEnvio = porDia > 0 && folga < ciclo && quantidade > 0;
-        const situacao = porDia === 0 ? 'sem_venda' : folga <= 0 ? 'atrasado' : noEnvio ? 'ciclo' : 'ok';
+        // Sem venda nos últimos 60 dias: com estoque, parar de mandar; sem estoque, tirar do Full (vender pelo normal)
+        const situacao = porDia === 0 ? (disponivel > 0 ? 'parar' : 'normal') : folga <= 0 ? 'atrasado' : noEnvio ? 'ciclo' : 'ok';
         const limite = Number.isFinite(folga) ? somarDias(hoje, Math.max(0, Math.floor(folga))) : null;
         grupo.forEach((l, k) => Object.assign(l, {
             principal: k === 0, grupo: grupo.length, demandaGrupo: porDia, cobertura, folga, quantidade, noEnvio: noEnvio && k === 0,
@@ -163,7 +161,8 @@ const ROTULO_SITUACAO = {
     atrasado: ['Enviar já', 'bg-red-900/60 text-red-200 border-red-500/40'],
     ciclo: ['Neste envio', 'bg-amber-900/50 text-amber-200 border-amber-500/40'],
     ok: ['Ok', 'bg-emerald-900/40 text-emerald-200 border-emerald-500/30'],
-    sem_venda: ['Sem vendas', 'bg-gray-900 text-gray-400 border-gray-600'],
+    parar: ['Parar de mandar', 'bg-gray-900 text-gray-300 border-gray-500'],
+    normal: ['Mudar para normal', 'bg-sky-900/50 text-sky-200 border-sky-500/40'],
 };
 
 function cartao(rotulo, valor, detalhe, destaque) {
@@ -206,16 +205,14 @@ function renderizar() {
     linhas.filter(l => l.principal).forEach(l => { if (l.sku) porSku.set(l.sku.toUpperCase(), (porSku.get(l.sku.toUpperCase()) || 0) + l.disponivel); });
     const emOutro = l => (l.sku ? porSku.get(l.sku.toUpperCase()) - l.disponivel : 0);
 
-    const mostrarSemVenda = document.getElementById('mostrarSemVenda').checked;
-    // Esconde só grupos inteiros sem venda, para não separar anúncios do mesmo estoque
-    const visiveis = linhas.filter(l => mostrarSemVenda || l.demandaGrupo > 0);
+    const visiveis = linhas;
     document.getElementById('tabela').innerHTML = visiveis.length ? visiveis.map(l => {
         const [rotulo, classe] = ROTULO_SITUACAO[l.situacao];
         const dura = !Number.isFinite(l.cobertura) ? '—' : l.cobertura >= 999 ? '999+' : `${Math.floor(l.cobertura)} d`;
         const localTexto = l.local === undefined ? '<span class="text-gray-600">—</span>' : l.local;
         const link = `https://produto.mercadolivre.com.br/${l.anuncio.replace(/^MLB/, 'MLB-')}`;
         const dividido = l.compartilha.length
-            ? `<div class="text-xs text-violet-300">estoque dividido com ${l.compartilha.map(esc).join(', ')}${l.principal ? '' : ' · sugestão na linha de cima'}</div>` : '';
+            ? `<div class="text-xs text-violet-300">estoque dividido com ${l.compartilha.map(esc).join(', ')}${l.principal || l.demandaGrupo === 0 ? '' : ' · sugestão na linha de cima'}</div>` : '';
         const enviar = l.noEnvio ? l.quantidade
             : !l.principal && l.noEnvioGrupo ? '<span class="font-normal text-violet-300" title="Mesmo estoque do anúncio de cima">↑</span>'
             : l.demandaGrupo > 0 ? '<span class="font-normal">—</span>' : '';
@@ -223,7 +220,7 @@ function renderizar() {
             <td class="py-2 pr-2 sm:pr-3 max-w-[9.5rem] sm:max-w-none">
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>
-                    ${l.principal ? `<span class="text-[11px] px-1.5 py-0.5 rounded border ${classe} whitespace-nowrap">${rotulo}</span>` : ''}
+                    ${l.principal || l.situacao === 'parar' || l.situacao === 'normal' ? `<span class="text-[11px] px-1.5 py-0.5 rounded border ${classe} whitespace-nowrap">${rotulo}</span>` : ''}
                     ${l.ativo ? '' : '<span class="text-[11px] px-1.5 py-0.5 rounded border border-gray-600 text-gray-400 whitespace-nowrap">pausado</span>'}
                 </div>
                 <div class="text-xs truncate sm:max-w-md"><a href="${link}" target="_blank" rel="noopener" class="text-blue-400 hover:underline tabular-nums">${esc(l.anuncio)}</a><span class="text-gray-500" title="${esc(l.titulo)}"> · ${esc(l.titulo)}</span></div>

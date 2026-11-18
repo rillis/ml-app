@@ -55,6 +55,7 @@ Sugestão por anúncio, com os parâmetros da tela (ciclo, prazo e segurança, g
 
 - **Venda por dia:** a maior média entre os últimos 30 e 60 dias completos, só das vendas pelo Full daquele anúncio.
 - **Enviar até:** o dia em que o estoque entra na margem (prazo + segurança).
+- **Sem venda nos últimos 60 dias:** com estoque no Full, "Parar de mandar"; sem estoque, "Mudar para normal".
 - **Entra no envio de hoje:** quem não aguenta até o próximo envio (um ciclo). A quantidade cobre prazo + ciclo + segurança.
 - **Local:** estoque do módulo Estoque pelo SKU, só para consulta.
 - **Copiar envio:** por anúncio (`MLB... - 2x`) ou por SKU, abrindo os kits e somando (`KF-133 - 6x`).
