@@ -11,7 +11,7 @@ PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`
 | `/dash/` | Últimos eventos do ML (vendas, perguntas, mensagens, reclamações), boletos dos próximos 15 dias e logs do container `ml-jrf` | `ml_jrf`, `ml_boletos` |
 | `/dash/fila/` | Fila do webhook do ml-jrf: pendentes, falhas, botões de reprocessar e descartar | `ml_jrf.webhook_queue` |
 | `/boletos/` | Cadastro de boletos (com leitura de PDF via pdf.js), vencimento ajustado a feriados, insights | `ml_boletos` |
-| `/vendas/` | Vendas do ML copiadas para o banco: comparativo entre períodos, faturamento por mês (Full × normal), acumulado do período, Premium × Clássico e tabela por SKU. Canceladas ficam fora | `ml_vendas` (esquema em `sql/ml_vendas.sql`) |
+| `/vendas/` | Vendas do ML copiadas para o banco: comparativo entre períodos (datas livres, padrão mês até hoje; contra o período anterior, o período anterior em dias úteis ou o mesmo período do ano passado), faturamento por mês (Full × normal), acumulado do período, Premium × Clássico e tabela por SKU. Canceladas ficam fora | `ml_vendas` (esquema em `sql/ml_vendas.sql`) |
 | `/estoque/` | Estoque local por SKU, com histórico (a lista de SKUs vem de `src/estoque/sku.csv`) | `ml_estoque` |
 | `/contas/` | Contas pessoais mensais, leitura de fatura de cartão em PDF, parcelas e insights | `contas_pessoais` (esquema em `sql/contas_pessoais.sql`) |
 | `/home/resumo.php` | JSON para os cards da home (home.rillis.com.br): boletos em aberto por nível e se o mês atual das contas foi salvo | `ml_boletos`, `contas_pessoais` |
@@ -21,6 +21,8 @@ PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`
 A API do ML só devolve os pedidos dos últimos 12 meses, então o módulo guarda uma cópia no banco `ml_vendas`: um registro por pedido (com o JSON completo do ML na coluna `bruto`) e um por item.
 
 O botão **Atualizar** busca no ML só o que mudou desde a última cópia (`order.date_last_updated`, com 1 h de folga) e grava por cima, pelo id do pedido. Assim entram as vendas novas e as antigas que foram canceladas ou mudaram de status. Com o banco vazio, ele faz a carga a partir de `VENDAS_INICIO` (padrão `2025-12-01`).
+
+Na comparação por dias úteis, a comparação começa no mesmo dia do período anterior e vai até juntar a mesma quantidade de dias úteis do período atual (até hoje). Fins de semana e os feriados da tabela `ml_boletos.feriados` não contam.
 
 Full ou normal vem de `order_items[].stock.node_id`: armazém do ML (`BRSP02`, `BRSP04`...) é Full. Pedidos de antes de 2026-07 não trazem esse campo; para eles a cópia consulta o envio (`/shipments`).
 

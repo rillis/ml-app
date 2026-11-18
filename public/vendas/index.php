@@ -31,36 +31,35 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
         </header>
 
         <div class="flex flex-wrap items-end gap-3 mb-6">
-            <label class="text-sm text-gray-400 flex flex-col gap-1">Período
-                <select id="periodo" class="<?= $classeSelect ?>" onchange="aoMudarPeriodo()">
-                    <option value="mes_atual">Este mês</option>
-                    <option value="mes_anterior">Mês passado</option>
-                    <option value="7">Últimos 7 dias</option>
-                    <option value="30">Últimos 30 dias</option>
-                    <option value="90">Últimos 90 dias</option>
-                    <option value="ano">Este ano</option>
-                    <option value="personalizado">Personalizado</option>
-                </select>
-            </label>
-            <label id="campoDe" class="hidden text-sm text-gray-400 flex-col gap-1">De
+            <label class="text-sm text-gray-400 flex flex-col gap-1">De
                 <input id="de" type="date" class="<?= $classeSelect ?>" onchange="renderizar()">
             </label>
-            <label id="campoAte" class="hidden text-sm text-gray-400 flex-col gap-1">Até
+            <label class="text-sm text-gray-400 flex flex-col gap-1">Até
                 <input id="ate" type="date" class="<?= $classeSelect ?>" onchange="renderizar()">
             </label>
             <label class="text-sm text-gray-400 flex flex-col gap-1">Comparar com
                 <select id="comparacao" class="<?= $classeSelect ?>" onchange="renderizar()">
                     <option value="anterior">Período anterior</option>
+                    <option value="uteis">Período anterior (dias úteis)</option>
                     <option value="ano">Mesmo período do ano passado</option>
                 </select>
             </label>
-            <label class="text-sm text-gray-400 flex flex-col gap-1">Logística
-                <select id="logistica" class="<?= $classeSelect ?>" onchange="renderizar()">
-                    <option value="">Full e normal</option>
-                    <option value="1">Só Full</option>
-                    <option value="0">Só normal</option>
-                </select>
-            </label>
+            <div class="text-sm text-gray-400 flex flex-col gap-1">Logística
+                <div id="menuLogistica" class="relative">
+                    <button type="button" onclick="alternarMenuLogistica()" aria-haspopup="true" aria-expanded="false"
+                            class="<?= $classeSelect ?> min-w-[9rem] flex items-center justify-between gap-3">
+                        <span id="rotuloLogistica">Full e normal</span><span aria-hidden="true" class="text-gray-400 text-xs">▼</span>
+                    </button>
+                    <div id="opcoesLogistica" class="hidden absolute z-30 mt-1 left-0 min-w-full bg-gray-800 border border-gray-600 rounded-lg shadow-2xl p-1">
+                        <label class="flex items-center gap-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-100 cursor-pointer whitespace-nowrap">
+                            <input type="checkbox" value="1" checked onchange="aoMarcarLogistica(this)" class="w-4 h-4 accent-blue-500"> Full
+                        </label>
+                        <label class="flex items-center gap-2 px-3 py-2 rounded hover:bg-gray-700 text-gray-100 cursor-pointer whitespace-nowrap">
+                            <input type="checkbox" value="0" checked onchange="aoMarcarLogistica(this)" class="w-4 h-4 accent-blue-500"> Normal
+                        </label>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <p id="descricaoPeriodo" class="text-sm text-gray-400 mb-3"></p>
@@ -136,7 +135,8 @@ const ALTURA_GRAFICO = 260;
 const LIMITE_SKUS = 25;
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
-let dados = { dias: [], skus: [], titulos: {}, sincronizacao: {} };
+let dados = { dias: [], skus: [], titulos: {}, feriados: [], sincronizacao: {} };
+let feriados = new Set();
 let periodoVisivel = null;
 let mostrarTodosSkus = false;
 
@@ -164,51 +164,81 @@ function mudarMes(t, n) {
     return paraTexto(alvo);
 }
 
+const ehUtil = t => { const d = paraData(t).getDay(); return d !== 0 && d !== 6 && !feriados.has(t); };
+function contarUteis(de, ate) {
+    let n = 0;
+    for (let dia = de; dia <= ate; dia = somarDias(dia, 1)) if (ehUtil(dia)) n++;
+    return n;
+}
+
+// Mês até hoje
+function periodoPadrao() {
+    const hoje = paraTexto(new Date());
+    document.getElementById('de').value = hoje.slice(0, 8) + '01';
+    document.getElementById('ate').value = hoje;
+}
+
 function periodos() {
     const hoje = paraTexto(new Date());
-    const tipo = document.getElementById('periodo').value;
-    let de, ate, porMes = false;
-    if (tipo === 'mes_atual') {
-        de = hoje.slice(0, 8) + '01'; ate = hoje; porMes = true;
-    } else if (tipo === 'mes_anterior') {
-        de = mudarMes(hoje.slice(0, 8) + '01', -1);
-        const d = paraData(de);
-        ate = paraTexto(new Date(d.getFullYear(), d.getMonth() + 1, 0)); porMes = true;
-    } else if (tipo === 'ano') {
-        de = hoje.slice(0, 4) + '-01-01'; ate = hoje;
-    } else if (tipo === 'personalizado') {
-        de = document.getElementById('de').value || hoje;
-        ate = document.getElementById('ate').value || hoje;
-        if (de > ate) [de, ate] = [ate, de];
-    } else {
-        ate = hoje; de = somarDias(hoje, -(Number(tipo) - 1));
-    }
+    let de = document.getElementById('de').value || hoje.slice(0, 8) + '01';
+    let ate = document.getElementById('ate').value || hoje;
+    if (de > ate) [de, ate] = [ate, de];
+    const modo = document.getElementById('comparacao').value;
 
-    let cDe, cAte;
-    if (document.getElementById('comparacao').value === 'ano' || tipo === 'ano') {
+    let cDe, cAte, uteis = null;
+    if (modo === 'ano') {
         cDe = mudarMes(de, -12); cAte = mudarMes(ate, -12);
-    } else if (porMes) {
-        // Mês contra mês: mesmos dias do mês anterior (1 a 17 contra 1 a 17)
+    } else if (de.slice(8) === '01' && de.slice(0, 7) === ate.slice(0, 7)) {
+        // Começa no dia 1 e fica dentro do mês: mesmos dias do mês anterior (1 a 17 contra 1 a 17)
         cDe = mudarMes(de, -1);
         const d = paraData(cDe);
-        const fim = tipo === 'mes_anterior' ? ultimoDiaDoMes(d.getFullYear(), d.getMonth()) : Math.min(paraData(ate).getDate(), ultimoDiaDoMes(d.getFullYear(), d.getMonth()));
-        cAte = paraTexto(new Date(d.getFullYear(), d.getMonth(), fim));
+        const ultimo = ultimoDiaDoMes(d.getFullYear(), d.getMonth());
+        const mesInteiro = paraData(ate).getDate() === ultimoDiaDoMes(paraData(ate).getFullYear(), paraData(ate).getMonth());
+        cAte = paraTexto(new Date(d.getFullYear(), d.getMonth(), mesInteiro ? ultimo : Math.min(paraData(ate).getDate(), ultimo)));
     } else {
         const tamanho = diasEntre(de, ate) + 1;
         cAte = somarDias(de, -1); cDe = somarDias(cAte, -(tamanho - 1));
     }
-    return { atual: { de, ate }, comparacao: { de: cDe, ate: cAte } };
+
+    if (modo === 'uteis') {
+        // Mesmo início do período anterior, andando até juntar a mesma quantidade de dias úteis
+        uteis = contarUteis(de, ate < hoje ? ate : hoje);
+        cAte = cDe;
+        let contados = ehUtil(cDe) ? 1 : 0;
+        while (contados < uteis) {
+            cAte = somarDias(cAte, 1);
+            if (ehUtil(cAte)) contados++;
+        }
+        if (uteis === 0) cAte = cDe;
+    }
+    return { atual: { de, ate }, comparacao: { de: cDe, ate: cAte }, uteis };
 }
 
 // ===== Agregação =====
-function filtroLogistica() {
-    const v = document.getElementById('logistica').value;
-    return v === '' ? () => true : linha => linha[2] === Number(v);
+const logisticas = new Set([0, 1]); // 1 = Full, 0 = normal
+const filtroLogistica = () => linha => logisticas.has(linha[2]);
+
+function alternarMenuLogistica(abrir) {
+    const painel = document.getElementById('opcoesLogistica');
+    const aberto = abrir ?? painel.classList.contains('hidden');
+    painel.classList.toggle('hidden', !aberto);
+    document.querySelector('#menuLogistica button').setAttribute('aria-expanded', String(aberto));
 }
+
+function aoMarcarLogistica(caixa) {
+    const valor = Number(caixa.value);
+    if (!caixa.checked && logisticas.size === 1) { caixa.checked = true; return; } // pelo menos uma marcada
+    caixa.checked ? logisticas.add(valor) : logisticas.delete(valor);
+    document.getElementById('rotuloLogistica').textContent = logisticas.size === 2 ? 'Full e normal' : logisticas.has(1) ? 'Só Full' : 'Só normal';
+    renderizar();
+}
+
+document.addEventListener('click', e => { if (!document.getElementById('menuLogistica').contains(e.target)) alternarMenuLogistica(false); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') alternarMenuLogistica(false); });
 
 function resumo({ de, ate }) {
     const passa = filtroLogistica();
-    const dias = dados.dias.filter(d => d[0] >= de && d[0] <= ate && (document.getElementById('logistica').value === '' || d[1] === Number(document.getElementById('logistica').value)));
+    const dias = dados.dias.filter(d => d[0] >= de && d[0] <= ate && logisticas.has(d[1]));
     const skus = dados.skus.filter(s => s[0] >= de && s[0] <= ate && passa(s));
     const faturamento = soma(dias.map(d => d[3]));
     const vendas = soma(dias.map(d => d[2]));
@@ -241,7 +271,7 @@ function renderizar() {
     const temBase = temDados(p.comparacao);
 
     document.getElementById('descricaoPeriodo').innerHTML =
-        `${dataCurta(p.atual.de)} a ${dataCurta(p.atual.ate)} <span class="text-gray-500">· comparando com ${dataCurta(p.comparacao.de)} a ${dataCurta(p.comparacao.ate)} · canceladas fora</span>`;
+        `${dataCurta(p.atual.de)} a ${dataCurta(p.atual.ate)} <span class="text-gray-500">· comparando com ${dataCurta(p.comparacao.de)} a ${dataCurta(p.comparacao.ate)}${p.uteis !== null ? ` (${p.uteis} dia${p.uteis === 1 ? '' : 's'} út${p.uteis === 1 ? 'il' : 'eis'} em cada)` : ''} · canceladas fora</span>`;
 
     const cartoes = [
         ['Faturamento', moeda(atual.faturamento), variacao(atual.faturamento, comp.faturamento, temBase), moeda(comp.faturamento)],
@@ -299,7 +329,6 @@ const legenda = itens => itens.map(([cor, nome, linha, tracejado]) => `<span cla
 
 function renderizarMensal() {
     const area = document.getElementById('graficoMensal');
-    const filtro = document.getElementById('logistica').value;
     const porMes = new Map();
     dados.dias.forEach(([dia, full, , fat]) => {
         const chave = dia.slice(0, 7);
@@ -314,13 +343,13 @@ function renderizarMensal() {
     const series = [
         { nome: 'Normal', cor: COR_NORMAL, idx: 0 },
         { nome: 'Full', cor: COR_FULL, idx: 1 },
-    ].filter(s => filtro === '' || s.idx === Number(filtro));
+    ].filter(s => logisticas.has(s.idx));
     document.getElementById('legendaMensal').innerHTML = series.length > 1 ? legenda(series.map(s => [s.cor, s.nome])) : '';
     const valor = (mes, s) => (porMes.get(mes) || [0, 0])[s.idx];
     const totais = meses.map(m => soma(series.map(s => valor(m, s))));
 
     const largura = area.clientWidth;
-    const margem = { esquerda: 64, direita: 8, topo: 12, baixo: 28 };
+    const margem = { esquerda: 76, direita: 8, topo: 12, baixo: 28 };
     const util = largura - margem.esquerda - margem.direita;
     const alturaUtil = ALTURA_GRAFICO - margem.topo - margem.baixo;
     const { topo, passos } = escalaY(Math.max(...totais));
@@ -391,7 +420,7 @@ function renderizarAcumulado(p, atual, comp, temBase) {
 
     const tamanho = Math.max(...series.map(s => s.valores.length));
     const largura = area.clientWidth;
-    const margem = { esquerda: 64, direita: 16, topo: 20, baixo: 28 };
+    const margem = { esquerda: 76, direita: 16, topo: 20, baixo: 28 };
     const util = largura - margem.esquerda - margem.direita;
     const alturaUtil = ALTURA_GRAFICO - margem.topo - margem.baixo;
     const { topo, passos } = escalaY(Math.max(1, ...series.flatMap(s => s.valores.filter(v => v !== null))));
@@ -515,20 +544,6 @@ function renderizarSkus() {
     botao.textContent = `Mostrar todos os ${linhas.length} SKUs`;
 }
 
-function aoMudarPeriodo() {
-    const personalizado = document.getElementById('periodo').value === 'personalizado';
-    ['campoDe', 'campoAte'].forEach(id => {
-        document.getElementById(id).classList.toggle('hidden', !personalizado);
-        document.getElementById(id).classList.toggle('flex', personalizado);
-    });
-    if (personalizado && !document.getElementById('de').value) {
-        const p = periodos();
-        document.getElementById('de').value = p.atual.de;
-        document.getElementById('ate').value = p.atual.ate;
-    }
-    renderizar();
-}
-
 function mostrarSincronizacao() {
     const s = dados.sincronizacao || {};
     const el = document.getElementById('statusSinc');
@@ -545,6 +560,7 @@ function mostrarSincronizacao() {
 async function carregar() {
     const r = await fetch('api.php?action=dados');
     dados = await r.json();
+    feriados = new Set(dados.feriados || []);
     mostrarSincronizacao();
     renderizar();
 }
@@ -574,6 +590,7 @@ window.addEventListener('resize', () => {
     redimensionar = setTimeout(() => { if (periodoVisivel) renderizar(); }, 150);
 });
 
+periodoPadrao();
 carregar();
 </script>
 </body>

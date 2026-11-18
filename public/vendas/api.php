@@ -45,6 +45,9 @@ if ($action === 'dados') {
         JOIN (SELECT i2.sku, MAX(p2.data_venda) AS ultima FROM itens i2 JOIN pedidos p2 ON p2.id = i2.pedido_id GROUP BY i2.sku) u
           ON u.sku = i.sku AND u.ultima = p.data_venda")->fetchAll(PDO::FETCH_KEY_PAIR);
 
+    // Feriados nacionais já cadastrados para os boletos: base da comparação por dias úteis
+    $feriados = $pdo->query("SELECT DATE_FORMAT(data, '%Y-%m-%d') FROM ml_boletos.feriados WHERE data >= '2024-01-01' ORDER BY data")->fetchAll(PDO::FETCH_COLUMN);
+
     $sinc = $pdo->query("SELECT fim, modo, pedidos, erro FROM sincronizacoes WHERE fim IS NOT NULL ORDER BY id DESC LIMIT 1")->fetch() ?: null;
     $ultimaOk = $pdo->query("SELECT MAX(fim) FROM sincronizacoes WHERE erro IS NULL")->fetchColumn() ?: null;
 
@@ -52,6 +55,7 @@ if ($action === 'dados') {
         'dias' => array_map(fn($d) => [$d['dia'], $d['logistica'] === 'full' ? 1 : 0, (int) $d['vendas'], (float) $d['faturamento']], $dias),
         'skus' => array_map(fn($s) => [$s['dia'], $s['sku'], $s['logistica'] === 'full' ? 1 : 0, $s['tipo_anuncio'] === 'gold_pro' ? 1 : 0, (int) $s['unidades'], (float) $s['faturamento']], $skus),
         'titulos' => $titulos,
+        'feriados' => $feriados,
         'sincronizacao' => ['ultima_ok' => $ultimaOk, 'ultima' => $sinc],
     ]);
 }
