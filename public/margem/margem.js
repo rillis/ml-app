@@ -9,10 +9,12 @@ const pct = (n, casas = 1) => n == null ? '—' : (n * 100).toLocaleString('pt-B
 const pctMeta = n => (n * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
 const quando = iso => iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
 const linkAnuncio = codigo => `https://produto.mercadolivre.com.br/${String(codigo).replace(/^MLB/, 'MLB-')}`;
-const urlPlanilha = (modulo, nome) => `api.php?r=arquivo&modulo=${modulo}&nome=${encodeURIComponent(nome)}`;
+// Código do anúncio: clicar no código copia; a seta abre o anúncio em nova guia (como na aba Full)
+const codigoAnuncio = codigo => `<button type="button" data-copiar="${esc(codigo)}" title="Copiar código do anúncio" class="text-blue-400 hover:text-blue-300 tabular-nums cursor-copy">${esc(codigo)}</button><a href="${linkAnuncio(codigo)}" target="_blank" rel="noopener" title="Abrir anúncio em nova guia" aria-label="Abrir anúncio ${esc(codigo)} em nova guia" class="inline-block ml-1 px-0.5 text-gray-400 hover:text-blue-300">↗</a>`;
+const urlPlanilha =(modulo, nome) => `api.php?r=arquivo&modulo=${modulo}&nome=${encodeURIComponent(nome)}`;
 
 const LIMITE_LINHAS = 300;
-const NOME_TAREFA = { atualizar: 'Atualização das margens', recalcular: 'Recálculo da margem', teste: 'Teste da margem', skus: 'Comparação de SKUs' };
+const NOME_TAREFA = { atualizar: 'Atualização das margens', recalcular: 'Recálculo da margem', teste: 'Teste da margem', parcial: 'Atualização de alguns anúncios', skus: 'Comparação de SKUs' };
 const STATUS = { active: 'ativo', paused: 'pausado', closed: 'encerrado', under_review: 'em revisão', inactive: 'inativo' };
 
 let estado = null;          // /api/estado
@@ -61,7 +63,9 @@ async function carregarEstado() {
     const parada = c && !c.concluida;
     $('#btnAtualizar').textContent = parada ? `▶️ Continuar a atualização (${c.feitos}/${c.total})` : '🔄 Atualizar margens';
     $('#btnDoZero').classList.toggle('hidden', !parada);
-    $('#infoMetas').innerHTML = `Margem alvo <strong class="text-gray-200">${pctMeta(estado.meta)}</strong> · atacado <strong class="text-gray-200">${pctMeta(estado.meta_atacado)}</strong>`;
+    const p = estado.partes;
+    $('#infoMetas').innerHTML = `Margem alvo <strong class="text-gray-200">${pctMeta(estado.meta)}</strong>`
+        + ` <span class="text-gray-500">= lucro ${pctMeta(p.lucro)} + gordura ${pctMeta(p.gordura)} + imposto ${pctMeta(p.imposto)}</span>`;
     $('#campoColeta').innerHTML = estado.coletas.length
         ? estado.coletas.map((x, i) => `<option value="${esc(x.nome)}">${esc(x.nome)} (${quando(x.quando)})${i === 0 ? ' · mais recente' : ''}</option>`).join('')
         : '<option value="">Nenhuma busca ainda</option>';
@@ -195,7 +199,13 @@ async function carregarMargem() {
         ML.toast(e.message, 'erro');
         return;
     }
-    if (margem) margem.linhas.forEach(l => { l.situacao = situacao(l); });
+    if (margem) {
+        margem.linhas.forEach(l => {
+            l.situacao = situacao(l);
+            // o "Você recebe" do ML: preço menos a taxa, o frete (frete grátis) e o adicional (sem frete grátis)
+            l.recebe = Math.round((l.preco * (1 - l.taxa) - l.frete - l.adc) * 100) / 100;
+        });
+    }
     renderMargem();
 }
 
@@ -211,7 +221,7 @@ function renderMargem() {
     }
     sub.textContent = `Planilha de ${quando(margem.gerado)} · busca no ML de ${quando(margem.coleta_data)}`;
     $('#infoColeta').innerHTML = `Busca no ML de <strong class="text-gray-200">${quando(margem.coleta_data)}</strong> · ${margem.linhas.length.toLocaleString('pt-BR')} anúncios`
-        + (margem.meta !== estado?.meta || margem.meta_atacado !== estado?.meta_atacado ? ' · <span class="text-amber-300">metas mudaram: recalcule</span>' : '');
+        + (margem.meta !== estado?.meta || (margem.imposto || 0) !== (estado?.partes.imposto || 0) ? ' · <span class="text-amber-300">margem alvo mudou: recalcule</span>' : '');
     const baixar = $('#baixarMargem');
     baixar.href = urlPlanilha('margem', margem.planilha);
     baixar.classList.remove('hidden');
@@ -282,15 +292,15 @@ function renderTabelaMargem() {
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>${status}
                 </div>
-                <div class="text-xs truncate"><a href="${linkAnuncio(l.codigo)}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300 tabular-nums">${esc(l.codigo)} ↗</a><span class="text-gray-500" title="${esc(l.titulo)}"> · ${esc(l.titulo)}</span></div>
+                <div class="text-xs truncate">${codigoAnuncio(l.codigo)}<span class="text-gray-500" title="${esc(l.titulo)}"> · ${esc(l.titulo)}</span></div>
                 ${l.situacao === 'sem' ? `<div class="text-xs text-red-300">${esc(l.como)}</div>` : ''}
             </td>
             <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap" title="Taxa ${pct(l.taxa)} · frete ${brl(l.frete)} · adicional ${brl(l.adc)}">${brl(l.preco)}</td>
+            <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap hidden sm:table-cell" title="${brl(l.preco)} − taxa ${brl(l.preco * l.taxa)} (${pct(l.taxa)}) − frete ${brl(l.frete)} − adicional ${brl(l.adc)}">${brl(l.recebe)}</td>
             <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap hidden md:table-cell" title="Sem desconto: ${brl(l.custo)}">${brl(l.custo_desc)}</td>
-            <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap hidden sm:table-cell ${l.lucro < 0 ? 'text-red-300' : ''}">${brl(l.lucro)}</td>
+            <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap hidden sm:table-cell ${l.lucro < 0 ? 'text-red-300' : ''}" title="Você recebe ${brl(l.recebe)} − custo ${brl(l.custo_desc)} = ${brl(l.lucro)}. Depois do imposto (${brl(l.imposto || 0)}): ${brl(l.lucro_liquido ?? l.lucro)}">${brl(l.lucro)}</td>
             <td class="py-2 px-2 sm:px-3 text-right">${margemCel}</td>
-            <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap">${l.preco_sugerido == null ? '—' : brl(l.preco_sugerido)}${diferenca(l.diferenca, l.preco)}</td>
-            <td class="py-2 pl-2 sm:pl-3 text-right tabular-nums whitespace-nowrap hidden lg:table-cell">${l.preco_sugerido_atacado == null ? '—' : brl(l.preco_sugerido_atacado)}${diferenca(l.diferenca_atacado, l.preco)}</td>
+            <td class="py-2 pl-2 sm:pl-3 text-right tabular-nums whitespace-nowrap">${l.preco_sugerido == null ? '—' : brl(l.preco_sugerido)}${diferenca(l.diferenca, l.preco)}</td>
         </tr>`;
     }).join('') : '<tr><td colspan="7" class="py-6 text-center text-gray-500">Nenhum anúncio com esses filtros.</td></tr>';
 }
@@ -396,7 +406,7 @@ function renderSkus() {
     $('#tabelaForaTabela').innerHTML = skus.sem_tabela.map(a => `<tr class="border-t border-gray-700/60 align-top">
         <td class="py-2 pr-3 max-w-[12rem] sm:max-w-md">
             <div class="font-semibold text-gray-100 break-all">${esc(a.sku || '(sem SKU)')}</div>
-            <div class="text-xs truncate"><a href="${linkAnuncio(a.codigo)}" target="_blank" rel="noopener" class="text-blue-400 hover:text-blue-300">${esc(a.codigo)} ↗</a><span class="text-gray-500"> · ${esc(a.titulo)}</span></div>
+            <div class="text-xs truncate">${codigoAnuncio(a.codigo)}<span class="text-gray-500"> · ${esc(a.titulo)}</span></div>
         </td>
         <td class="py-2 pl-3 text-amber-200 break-all">${esc(a.fora_da_tabela)}</td>
     </tr>`).join('');
@@ -463,6 +473,13 @@ async function trocarTabela(nome, input) {
 
 // ===================================================================== eventos
 
+// Soma das três partes da margem alvo enquanto digita
+function somarMeta() {
+    const v = s => parseFloat(String($(s).value).replace(',', '.')) || 0;
+    const total = v('#campoLucro') + v('#campoGordura') + v('#campoImposto');
+    $('#totalMeta').textContent = total.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
+}
+
 // Dropdown de margens com várias opções marcadas: o rótulo resume o que está marcado
 function ligarFiltroMargem() {
     const botao = $('#btnFiltroMargem');
@@ -489,23 +506,56 @@ function ligarFiltroMargem() {
 }
 
 function ligarEventos() {
+    document.addEventListener('click', async e => {
+        const botao = e.target.closest('[data-copiar]');
+        if (!botao) return;
+        try {
+            await navigator.clipboard.writeText(botao.dataset.copiar);
+            ML.toast(`${botao.dataset.copiar} copiado.`, 'sucesso');
+        } catch (erro) {
+            ML.toast('Não foi possível copiar.', 'erro');
+        }
+    });
+
     $$('#abas [data-aba]').forEach(b => b.addEventListener('click', () => abrirAba(b.dataset.aba)));
 
     $('#btnAtualizar').addEventListener('click', atualizarMargens);
     $('#btnRecalcular').addEventListener('click', () => iniciarJob({ tipo: 'recalcular' }));
     $('#btnMetas').addEventListener('click', () => {
-        $('#campoMeta').value = String(+(estado.meta * 100).toFixed(2)).replace('.', ',');
-        $('#campoMetaAtacado').value = String(+(estado.meta_atacado * 100).toFixed(2)).replace('.', ',');
+        const pct2 = v => String(+(v * 100).toFixed(2)).replace('.', ',');
+        $('#campoLucro').value = pct2(estado.partes.lucro);
+        $('#campoGordura').value = pct2(estado.partes.gordura);
+        $('#campoImposto').value = pct2(estado.partes.imposto);
+        somarMeta();
         $('#formMetas').classList.toggle('hidden');
     });
     $('#btnMetasCancelar').addEventListener('click', () => $('#formMetas').classList.add('hidden'));
+    ['#campoLucro', '#campoGordura', '#campoImposto'].forEach(s => $(s).addEventListener('input', somarMeta));
+
+    // Atualizar só alguns anúncios: os códigos MLB colados viram a lista, sem repetir
+    const codigosParcial = () => [...new Set(($('#campoParcial').value.toUpperCase().match(/MLB\d+/g) || []))];
+    $('#btnParcial').addEventListener('click', () => {
+        $('#formParcial').classList.toggle('hidden');
+        if (!$('#formParcial').classList.contains('hidden')) $('#campoParcial').focus();
+    });
+    $('#btnParcialCancelar').addEventListener('click', () => $('#formParcial').classList.add('hidden'));
+    $('#campoParcial').addEventListener('input', () => {
+        const n = codigosParcial().length;
+        $('#contagemParcial').textContent = n ? `${n} anúncio${n > 1 ? 's' : ''}` : '';
+    });
+    $('#formParcial').addEventListener('submit', async e => {
+        e.preventDefault();
+        const ids = codigosParcial();
+        if (!ids.length) { ML.toast('Cole os códigos dos anúncios (MLB…).', 'aviso'); return; }
+        await iniciarJob({ tipo: 'parcial', ids: ids.join(',') });
+    });
     $('#formMetas').addEventListener('submit', async e => {
         e.preventDefault();
-        const salvo = await salvarConfig({ meta: $('#campoMeta').value, meta_atacado: $('#campoMetaAtacado').value }, 'Metas salvas.');
+        const salvo = await salvarConfig({ lucro: $('#campoLucro').value, gordura: $('#campoGordura').value, imposto: $('#campoImposto').value }, 'Margem alvo salva.');
         if (!salvo) return;
         $('#formMetas').classList.add('hidden');
         renderMargem();
-        if (margem && !jobRodando && await ML.confirmar('Recalcular a planilha agora com as novas metas? Não busca no ML.', { titulo: 'Recalcular', textoConfirmar: 'Recalcular' })) {
+        if (margem && !jobRodando && await ML.confirmar('Recalcular a planilha agora com a margem alvo nova? Não busca no ML.', { titulo: 'Recalcular', textoConfirmar: 'Recalcular' })) {
             iniciarJob({ tipo: 'recalcular' });
         }
     });

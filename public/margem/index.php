@@ -50,19 +50,34 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <button id="btnAtualizar" type="button" class="<?= $classePrimario ?> job" title="Busca todos os anúncios no ML e gera a planilha">🔄 Atualizar margens</button>
+                        <button id="btnParcial" type="button" class="<?= $classeBotao ?>" title="Busca de novo só os anúncios que você escolher">📝 Só alguns</button>
                         <button id="btnRecalcular" type="button" class="<?= $classeBotao ?> job" title="Gera a planilha de novo com a última busca, sem chamar o ML">🧮 Recalcular</button>
-                        <button id="btnMetas" type="button" class="<?= $classeBotao ?>">🎯 Metas</button>
+                        <button id="btnMetas" type="button" class="<?= $classeBotao ?>">🎯 Margem alvo</button>
                     </div>
                 </div>
                 <form id="formMetas" class="hidden mt-4 pt-4 border-t border-gray-700 flex flex-wrap items-end gap-3">
-                    <label class="text-sm text-gray-400 flex flex-col gap-1">Margem alvo (%)
-                        <input id="campoMeta" type="text" inputmode="decimal" class="<?= $classeCampo ?> w-32">
+                    <label class="text-sm text-gray-400 flex flex-col gap-1">Lucro (%)
+                        <input id="campoLucro" type="text" inputmode="decimal" class="<?= $classeCampo ?> w-28">
                     </label>
-                    <label class="text-sm text-gray-400 flex flex-col gap-1">Margem do atacado (%)
-                        <input id="campoMetaAtacado" type="text" inputmode="decimal" class="<?= $classeCampo ?> w-32">
+                    <label class="text-sm text-gray-400 flex flex-col gap-1">Gordura (%)
+                        <input id="campoGordura" type="text" inputmode="decimal" class="<?= $classeCampo ?> w-28">
                     </label>
+                    <label class="text-sm text-gray-400 flex flex-col gap-1" title="Alíquota da nota sobre o preço de venda">Imposto (%)
+                        <input id="campoImposto" type="text" inputmode="decimal" class="<?= $classeCampo ?> w-28">
+                    </label>
+                    <p class="text-sm text-gray-400 self-center">= margem alvo <strong id="totalMeta" class="text-gray-200"></strong></p>
                     <button type="submit" class="<?= $classePrimario ?>">Salvar</button>
                     <button type="button" id="btnMetasCancelar" class="<?= $classeBotao ?>">Cancelar</button>
+                </form>
+                <form id="formParcial" class="hidden mt-4 pt-4 border-t border-gray-700">
+                    <label for="campoParcial" class="block text-sm text-gray-300 mb-1">Atualizar só estes anúncios</label>
+                    <p class="text-xs text-gray-500 mb-2">Cole os códigos MLB (separados por vírgula, espaço ou um por linha). Só eles são buscados de novo no ML e trocados na última busca; os outros anúncios ficam como estão.</p>
+                    <textarea id="campoParcial" rows="3" placeholder="MLB6926478482, MLB6624766636" class="<?= $classeCampo ?> w-full font-mono"></textarea>
+                    <div class="flex flex-wrap items-center gap-2 mt-2">
+                        <button type="submit" class="<?= $classePrimario ?> job">🔄 Atualizar estes</button>
+                        <button type="button" id="btnParcialCancelar" class="<?= $classeBotao ?>">Cancelar</button>
+                        <span id="contagemParcial" class="text-sm text-gray-400"></span>
+                    </div>
                 </form>
             </section>
 
@@ -102,11 +117,11 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
                             <tr>
                                 <th class="text-left <?= $classeTh ?> pl-0" data-ordem="sku">Anúncio e SKU</th>
                                 <th class="text-right <?= $classeTh ?>" data-ordem="preco">Preço</th>
+                                <th class="text-right <?= $classeTh ?> hidden sm:table-cell" data-ordem="recebe" title="Preço − taxa do ML − frete − adicional (o &quot;Você recebe&quot; do ML)">Você recebe</th>
                                 <th class="text-right <?= $classeTh ?> hidden md:table-cell" data-ordem="custo_desc" title="Custo do fornecedor com desconto">Custo</th>
                                 <th class="text-right <?= $classeTh ?> hidden sm:table-cell" data-ordem="lucro">Lucro</th>
                                 <th class="text-right <?= $classeTh ?>" data-ordem="margem">Margem</th>
-                                <th class="text-right <?= $classeTh ?>" data-ordem="diferenca" title="Preço que dá a margem alvo e a diferença para o preço atual">Sugerido</th>
-                                <th class="text-right <?= $classeTh ?> hidden lg:table-cell pr-0" data-ordem="diferenca_atacado" title="Preço que dá a margem do atacado">Atacado</th>
+                                <th class="text-right <?= $classeTh ?> pr-0" data-ordem="diferenca" title="Preço que dá a margem alvo e a diferença para o preço atual">Sugerido</th>
                             </tr>
                         </thead>
                         <tbody id="tabelaMargem"></tbody>
