@@ -191,6 +191,7 @@ const COR_PROJECAO = '#a78bfa';
 // Cancelamentos: realizado mais escuro, projeção do mês atual mais clara
 const COR_CANCELADO = '#d04545';
 const COR_CANCELADO_PROJ = '#f2a0a0';
+const COR_PCT_CANCELADO = COR_CANCELADO;
 // Erro médio do backtest (fev–out/2026) da projeção, pelo dia do mês
 const ERRO_PROJECAO = [[3, 17.8], [7, 14.5], [10, 9.8], [15, 6.3], [20, 4.6], [25, 4.5]];
 const COR_COMPARACAO = '#9ca3af';
@@ -820,7 +821,9 @@ function renderizarEvolucao() {
     const mF = { esquerda: margem.esquerda, direita: margem.direita, topo: 16, baixo: 26 };
     const utilF = larguraF - mF.esquerda - mF.direita;
     const altUtilF = alturaF - mF.topo - mF.baixo;
-    const valoresF = projecoes.map(p => p.total);
+    // Faixa de erro de cada projeção: erro médio do backtest para o dia em que ela foi feita
+    projecoes.forEach(p => { p.erro = erroProjecao(p.r); p.min = p.total * (1 - p.erro / 100); p.max = p.total * (1 + p.erro / 100); });
+    const valoresF = projecoes.flatMap(p => [p.min, p.max]);
     const minF = Math.min(...valoresF, anterior[Nant]), maxF = Math.max(...valoresF, anterior[Nant]);
     const folgaF = (maxF - minF) * 0.15 || maxF * 0.1 || 1;
     const baseF = Math.max(0, minF - folgaF), topoF = maxF + folgaF;
@@ -835,6 +838,7 @@ function renderizarEvolucao() {
         ${marcasF.map(v => `<line x1="${mF.esquerda}" x2="${larguraF - mF.direita}" y1="${yF(v).toFixed(1)}" y2="${yF(v).toFixed(1)}" stroke="${COR_GRADE}"/><text x="${mF.esquerda - 8}" y="${(yF(v) + 4).toFixed(1)}" text-anchor="end" fill="${COR_TEXTO_EIXO}" font-size="11">${moedaCurta(v)}</text>`).join('')}
         <line x1="${mF.esquerda}" x2="${larguraF - mF.direita}" y1="${refY.toFixed(1)}" y2="${refY.toFixed(1)}" stroke="${COR_COMPARACAO}" stroke-dasharray="5 4"/>
         ${rotulo(larguraF - mF.direita, refY - 6, mesLongo(inicioAnt) + ': ' + moedaCurta(anterior[Nant]), 'end')}
+        <polygon points="${[...projecoes.map(p => `${xF(p.r).toFixed(1)},${yF(p.max).toFixed(1)}`), ...[...projecoes].reverse().map(p => `${xF(p.r).toFixed(1)},${yF(p.min).toFixed(1)}`)].join(' ')}" fill="${COR_PROJECAO}" fill-opacity="0.15"/>
         <polyline points="${projecoes.map(p => `${xF(p.r).toFixed(1)},${yF(p.total).toFixed(1)}`).join(' ')}" fill="none" stroke="${COR_PROJECAO}" stroke-width="1.5" stroke-opacity="0.6"/>
         ${pontosF}${eixoF}
         <rect data-alvo x="${mF.esquerda - 10}" y="0" width="${utilF + 20}" height="${alturaF - mF.baixo}" fill="transparent"/></svg>`;
@@ -856,7 +860,9 @@ function renderizarEvolucao() {
         const dia = somarDias(inicio, r - 1);
         const titulo = `Projeção do dia ${dataCurta(dia).slice(0, 5)} <span class="font-normal text-gray-400">(${r > 1 ? 'dados até ' + dataCurta(somarDias(dia, -1)).slice(0, 5) : 'sem dias completos'})</span>`;
         mostrarDica(e, `<div class="font-semibold mb-1">${titulo}</div>`
-            + (p ? linhaDica(COR_PROJECAO, 'Fechamento projetado', moeda(p.total)) : '<div class="text-gray-400">Sem projeção neste dia</div>')
+            + (p ? linhaDica(COR_PROJECAO, 'Fechamento projetado', moeda(p.total))
+                + (p.erro ? `<div class="text-xs text-gray-400 mb-1">faixa ±${pct(p.erro)}: ${moedaCurta(p.min)} a ${moedaCurta(p.max)}</div>` : '')
+                : '<div class="text-gray-400">Sem projeção neste dia</div>')
             + linhaDica(COR_ATUAL, `Realizado até ${dataCurta(somarDias(dia, -1)).slice(0, 5)}`, moeda(realizado[r - 1]))
             + linhaDica(COR_COMPARACAO, `${mesLongo(inicioAnt)} até o dia ${r - 1}`, r - 1 <= Nant ? moeda(anterior[r - 1]) : '—')
             + (p && r > 1 && projecoes.find(q => q.r === r - 1) ? `<div class="text-xs text-gray-400 mt-1">vs projeção da véspera: ${variacao(p.total, projecoes.find(q => q.r === r - 1).total, true)}</div>` : ''));
@@ -1027,14 +1033,21 @@ function renderizarCancelamentos() {
         info[iAtual].projetado = Math.max(0, validasProjetadas * parte / (1 - parte) - info[iAtual].valor);
     }
     const temProjecao = iAtual >= 0 && info[iAtual].projetado > 0;
-    document.getElementById('legendaCancelamentos').innerHTML = legenda([[COR_CANCELADO, 'Cancelado'], ...(temProjecao ? [[COR_CANCELADO_PROJ, 'Projeção']] : [])]);
+    document.getElementById('legendaCancelamentos').innerHTML = legenda([[COR_CANCELADO, 'Cancelado'], ...(temProjecao ? [[COR_CANCELADO_PROJ, 'Projeção']] : []), [COR_PCT_CANCELADO, '% das vendas do mês', true]]);
 
     const largura = area.clientWidth;
     const margem = { esquerda: 76, direita: 8, topo: 18, baixo: 28 };
     const util = largura - margem.esquerda - margem.direita;
-    const alturaUtil = ALTURA_GRAFICO - margem.topo - margem.baixo;
+    // Faixa de cima para a linha de %, separada das barras (que ficam embaixo com a própria escala)
+    const alturaLinha = 64, vao = 22;
+    const alturaGrafico = ALTURA_GRAFICO + alturaLinha + vao;
+    const topoBarras = margem.topo + alturaLinha + vao;
+    const alturaUtil = alturaGrafico - topoBarras - margem.baixo;
     const { topo, passos } = escalaY(Math.max(1, ...info.map(i => i.valor + i.projetado)));
-    const y = v => margem.topo + alturaUtil - v / topo * alturaUtil;
+    const y = v => topoBarras + alturaUtil - v / topo * alturaUtil;
+    const pcts = info.map(i => i.pctValor);
+    const minPct = Math.min(...pcts), maxPct = Math.max(...pcts);
+    const yPct = v => margem.topo + 14 + (maxPct === minPct ? (alturaLinha - 14) / 2 : (maxPct - v) / (maxPct - minPct) * (alturaLinha - 14));
     const faixa = util / meses.length;
     const barra = Math.min(24, faixa * 0.6);
     const pularRotulo = Math.ceil(meses.length / Math.max(1, Math.floor(util / 48)));
@@ -1058,12 +1071,24 @@ function renderizarCancelamentos() {
         }
         const ultimo = i === meses.length - 1;
         const rotulo = (meses.length - 1 - i) % pularRotulo === 0
-            ? `<text x="${(ultimo ? x + barra + 4 : x + barra / 2).toFixed(1)}" y="${ALTURA_GRAFICO - 8}" text-anchor="${ultimo ? 'end' : 'middle'}" fill="${COR_TEXTO_EIXO}" font-size="11">${mesCurto(mes)}${mes === mesAtual ? '*' : ''}</text>` : '';
-        return `${marca}${rotulo}<rect data-alvo="${i}" x="${margem.esquerda + faixa * i}" y="${margem.topo}" width="${faixa}" height="${alturaUtil}" fill="transparent"/>`;
+            ? `<text x="${(ultimo ? x + barra + 4 : x + barra / 2).toFixed(1)}" y="${alturaGrafico - 8}" text-anchor="${ultimo ? 'end' : 'middle'}" fill="${COR_TEXTO_EIXO}" font-size="11">${mesCurto(mes)}${mes === mesAtual ? '*' : ''}</text>` : '';
+        return `${marca}${rotulo}<rect data-alvo="${i}" x="${margem.esquerda + faixa * i}" y="${margem.topo}" width="${faixa}" height="${alturaGrafico - margem.topo - margem.baixo}" fill="transparent"/>`;
     }).join('');
 
-    area.innerHTML = `<svg width="${largura}" height="${ALTURA_GRAFICO}" role="img" aria-label="Valor cancelado por mês da venda" class="block">
-        ${grade(passos, y, margem.esquerda, largura - margem.direita)}${colunas}</svg>
+    // Linha do % cancelado (mês atual ainda parcial: trecho tracejado e ponto vazado)
+    const cx = i => margem.esquerda + faixa * i + faixa / 2;
+    const ponto = i => `${cx(i).toFixed(1)},${yPct(pcts[i]).toFixed(1)}`;
+    const fechados = meses.map((m, i) => i).filter(i => meses[i] !== mesAtual);
+    const casas = faixa < 40 ? 0 : 1;
+    const linhaPct = `<polyline points="${fechados.map(ponto).join(' ')}" fill="none" stroke="${COR_PCT_CANCELADO}" stroke-width="2" stroke-linejoin="round"/>`
+        + (iAtual > 0 ? `<line x1="${cx(iAtual - 1)}" y1="${yPct(pcts[iAtual - 1])}" x2="${cx(iAtual)}" y2="${yPct(pcts[iAtual])}" stroke="${COR_PCT_CANCELADO}" stroke-width="2" stroke-dasharray="4 4"/>` : '')
+        + meses.map((m, i) => `<circle cx="${cx(i).toFixed(1)}" cy="${yPct(pcts[i]).toFixed(1)}" r="3.5" fill="${m === mesAtual ? COR_FUNDO : COR_PCT_CANCELADO}" stroke="${m === mesAtual ? COR_PCT_CANCELADO : COR_FUNDO}" stroke-width="${m === mesAtual ? 2 : 1.5}"/>`
+            + `<text x="${cx(i).toFixed(1)}" y="${(yPct(pcts[i]) - 8).toFixed(1)}" text-anchor="middle" fill="${COR_TEXTO_ROTULO}" font-size="${faixa < 40 ? 9 : 11}" stroke="${COR_FUNDO}" stroke-width="3" style="font-variant-numeric:tabular-nums;paint-order:stroke">${pcts[i].toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%</text>`).join('');
+
+    area.innerHTML = `<svg width="${largura}" height="${alturaGrafico}" role="img" aria-label="Valor cancelado por mês da venda e % cancelado das vendas do mês" class="block">
+        ${grade(passos, y, margem.esquerda, largura - margem.direita)}
+        <text x="${margem.esquerda - 8}" y="${(margem.topo + alturaLinha / 2 + 8).toFixed(1)}" text-anchor="end" fill="${COR_TEXTO_EIXO}" font-size="11">% cancel.</text>
+        ${linhaPct}${colunas}</svg>
         <p class="text-xs text-gray-500 mt-1">Pelo mês da venda. % = parte do valor vendido no mês (válidas + canceladas) que foi cancelada.${temProjecao ? ' Projeção: o mesmo % do mês atual aplicado à projeção de vendas.' : ''}</p>`;
 
     area.querySelectorAll('[data-alvo]').forEach(alvo => {
