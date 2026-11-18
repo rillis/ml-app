@@ -27,6 +27,20 @@ if ($action === 'atualizar') {
     responder($resultado);
 }
 
+/* ===== EXTINTOS: refaz agora a conferência dos anúncios que não existem mais e dos equivalentes ===== */
+if ($action === 'extintos') {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        responder(['error' => 'Use POST'], 405);
+    }
+    exec('docker exec ml-app php /var/www/html/src/vendas/extintos.php 2>&1', $saida, $codigo);
+    $texto = trim(implode("\n", $saida));
+    $resultado = json_decode($texto, true);
+    if ($codigo !== 0 || !is_array($resultado)) {
+        responder(['error' => preg_replace('/^Erro: /', '', $texto) ?: 'Falha ao conferir os anúncios'], 500);
+    }
+    responder($resultado);
+}
+
 /* ===== DADOS: agregados por dia para as telas (canceladas ficam de fora) ===== */
 if ($action === 'dados') {
     $pdo = ml_db('ml_vendas');
@@ -71,6 +85,7 @@ if ($action === 'dados') {
         'cancelados' => array_map(fn($c) => [$c['dia'], $c['logistica'] === 'full' ? 1 : 0, (int) $c['vendas'], (float) $c['valor']], $cancelados),
         'titulos' => $titulos,
         'feriados' => $feriados,
+        'extintosVerificado' => $pdo->query('SELECT MAX(verificado) FROM anuncios_extintos')->fetchColumn() ?: null,
         'extintos' => array_map(fn($e) => [
             'anuncio' => $e['anuncio'], 'sku' => $e['sku'], 'titulo' => $e['titulo'], 'tipos' => explode(',', (string) $e['tipos']),
             'unidades' => (int) $e['unidades'], 'unidadesFull' => (int) $e['unidades_full'], 'faturamento' => (float) $e['faturamento'],

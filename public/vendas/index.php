@@ -152,7 +152,14 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
         </section>
 
         <section class="<?= $classeCartao ?>">
-            <h2 class="text-lg font-semibold text-gray-200">Anúncios que não existem mais</h2>
+            <div class="flex flex-wrap justify-between items-center gap-3">
+                <h2 class="text-lg font-semibold text-gray-200">Anúncios que não existem mais</h2>
+                <div class="flex items-center gap-3">
+                    <span id="statusExtintos" class="text-sm text-gray-400"></span>
+                    <button id="btnExtintos" onclick="atualizarExtintos()"
+                            class="bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white text-sm font-medium px-3 py-1.5 rounded-lg whitespace-nowrap">🔄 Conferir agora</button>
+                </div>
+            </div>
             <p class="text-sm text-gray-400 mb-4">Anúncios encerrados ou apagados que tiveram vendas, no histórico todo (não segue o filtro de período), e os anúncios de hoje com o mesmo SKU. Quem já tem substituto ativo do mesmo tipo (Clássico ou Premium) não aparece.</p>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
@@ -1162,7 +1169,33 @@ async function copiarCodigo(codigo) {
     }
 }
 
+async function atualizarExtintos() {
+    const botao = document.getElementById('btnExtintos');
+    botao.disabled = true;
+    botao.textContent = '⏳ Conferindo...';
+    try {
+        const r = await fetch('api.php?action=extintos', { method: 'POST' });
+        const resposta = await r.json();
+        if (!r.ok) throw new Error(resposta.error || 'Falha ao conferir os anúncios');
+        const partes = [
+            resposta.novos && `${resposta.novos} anúncio${resposta.novos > 1 ? 's' : ''} encerrado${resposta.novos > 1 ? 's' : ''} a mais`,
+            resposta.alterados && `${resposta.alterados} com equivalente diferente`,
+            resposta.voltaram && `${resposta.voltaram} voltou${resposta.voltaram > 1 ? 'aram' : ''} a existir`,
+        ].filter(Boolean);
+        ML.toast(partes.length ? partes.join(', ') : 'Nada mudou nos equivalentes', partes.length ? 'sucesso' : 'info');
+        await carregar();
+    } catch (e) {
+        ML.toast(e.message, 'erro');
+    } finally {
+        botao.disabled = false;
+        botao.textContent = '🔄 Conferir agora';
+    }
+}
+
 function renderizarExtintos() {
+    const verificado = dados.extintosVerificado;
+    document.getElementById('statusExtintos').textContent = verificado
+        ? `Conferido em ${dataCurta(verificado.slice(0, 10)).slice(0, 5)} às ${verificado.slice(11, 16)}` : '';
     // Tem substituto (sai da lista): anúncio ativo de hoje com o mesmo SKU e o mesmo tipo. Full ou normal não importa.
     const linhas = (dados.extintos || []).filter(l => !l.equivalentes.some(e => e.status === 'active' && l.tipos.includes(e.tipo)));
     document.getElementById('tabelaExtintos').innerHTML = linhas.length ? linhas.map(l => {
