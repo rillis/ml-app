@@ -137,11 +137,11 @@ const COR_NORMAL = '#d95926';
 const COR_PREMIUM = '#199e70';
 const COR_CLASSICO = '#c98500';
 const COR_ATUAL = '#3987e5';
-// Faturamento por mês: realizado em azul, projeção do mês atual em roxo (escuro = Full, claro = normal)
-const COR_REAL_FULL = '#2f6fd6';
-const COR_REAL_NORMAL = '#93c5fd';
-const COR_PROJ_FULL = '#7c4ddb';
-const COR_PROJ_NORMAL = '#c4b5fd';
+// Faturamento por mês: realizado em azul, projeção do mês atual em roxo (claro = Full, escuro = normal)
+const COR_REAL_FULL = '#93c5fd';
+const COR_REAL_NORMAL = '#2f6fd6';
+const COR_PROJ_FULL = '#c4b5fd';
+const COR_PROJ_NORMAL = '#7c4ddb';
 const COR_PROJECAO = '#a78bfa';
 // Erro médio do backtest (fev–out/2026) da projeção, pelo dia do mês
 const ERRO_PROJECAO = [[3, 17.8], [7, 14.5], [10, 9.8], [15, 6.3], [20, 4.6], [25, 4.5]];
@@ -163,6 +163,7 @@ let mostrarTodosSkus = false;
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
 const moeda = v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const moedaCurta = v => v >= 1000 ? 'R$ ' + (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mil' : moeda(v);
+const milhar = (v, casas = 1) => v >= 1000 ? (v / 1000).toFixed(casas) + 'k' : String(Math.round(v));
 const inteiro = v => Number(v).toLocaleString('pt-BR');
 const pct = v => v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
 const soma = lista => lista.reduce((t, v) => t + v, 0);
@@ -457,7 +458,7 @@ function renderizarMensal() {
     const totais = meses.map(m => soma(series.map(s => s.valor(m))));
 
     const largura = area.clientWidth;
-    const margem = { esquerda: 76, direita: 8, topo: 12, baixo: 28 };
+    const margem = { esquerda: 76, direita: 8, topo: 18, baixo: 28 };
     const util = largura - margem.esquerda - margem.direita;
     const alturaUtil = ALTURA_GRAFICO - margem.topo - margem.baixo;
     const { topo, passos } = escalaY(Math.max(...totais));
@@ -487,7 +488,11 @@ function renderizarMensal() {
         }).join('');
         const rotulo = (meses.length - 1 - i) % pularRotulo === 0
             ? `<text x="${(i === meses.length - 1 ? x + barra + 4 : x + barra / 2).toFixed(1)}" y="${ALTURA_GRAFICO - 8}" text-anchor="${i === meses.length - 1 ? 'end' : 'middle'}" fill="${COR_TEXTO_EIXO}" font-size="11">${mesCurto(mes)}${mes === mesAtual ? '*' : ''}</text>` : '';
-        return `${partes}${rotulo}<rect data-alvo="${i}" x="${margem.esquerda + faixa * i}" y="${margem.topo}" width="${faixa}" height="${alturaUtil}" fill="transparent"/>`;
+        // Total no topo da coluna, resumido (96.9k); em coluna estreita sem a casa decimal
+        const total = totais[i];
+        const topoTexto = total > 0
+            ? `<text x="${(x + barra / 2).toFixed(1)}" y="${(y(total) - 5).toFixed(1)}" text-anchor="middle" fill="${COR_TEXTO_ROTULO}" font-size="${faixa < 40 ? 9 : 11}" style="font-variant-numeric:tabular-nums">${milhar(total, faixa < 40 ? 0 : 1)}</text>` : '';
+        return `${partes}${topoTexto}${rotulo}<rect data-alvo="${i}" x="${margem.esquerda + faixa * i}" y="${margem.topo}" width="${faixa}" height="${alturaUtil}" fill="transparent"/>`;
     }).join('');
 
     area.innerHTML = `<svg width="${largura}" height="${ALTURA_GRAFICO}" role="img" aria-label="Faturamento por mês, ${mesCurto(meses[0])} a ${mesCurto(meses[meses.length - 1])}${proj ? ', com a projeção do mês atual' : ''}" class="block">
@@ -699,7 +704,7 @@ function renderizarSemana({ de, ate }) {
     document.getElementById('legendaSemana').innerHTML = legenda(series.map(s => [s.cor, s.nome]));
 
     const largura = area.clientWidth;
-    const margem = { esquerda: 44, direita: 8, topo: 12, baixo: 28 };
+    const margem = { esquerda: 44, direita: 8, topo: 18, baixo: 28 };
     const util = largura - margem.esquerda - margem.direita;
     const alturaUtil = ALTURA_GRAFICO - margem.topo - margem.baixo;
     const maximo = Math.max(...series.flatMap(s => s.partes));
@@ -707,7 +712,9 @@ function renderizarSemana({ de, ate }) {
     const topo = Math.max(passo, Math.ceil(maximo / passo) * passo);
     const y = v => margem.topo + alturaUtil - v / topo * alturaUtil;
     const faixa = util / 7;
-    const barra = Math.min(24, (faixa * 0.7 - 2) / 2);
+    const estreito = faixa < 60;
+    const vao = estreito ? 2 : 8; // vão entre as duas colunas do dia: abre espaço para os rótulos com decimal
+    const barra = Math.min(24, (faixa * (estreito ? 0.92 : 0.7) - vao) / 2);
     const marcas = [];
     for (let v = 0; v <= topo; v += passo) marcas.push(v);
     const grade = marcas.map(v => `
@@ -717,11 +724,12 @@ function renderizarSemana({ de, ate }) {
         const alto = y(0) - y(v);
         if (alto <= 0) return '';
         const r = Math.min(4, alto, barra / 2), t = y(v);
-        return `<path d="M${x},${y(0)} V${t + r} Q${x},${t} ${x + r},${t} H${x + barra - r} Q${x + barra},${t} ${x + barra},${t + r} V${y(0)} Z" fill="${cor}"/>`;
+        return `<path d="M${x},${y(0)} V${t + r} Q${x},${t} ${x + r},${t} H${x + barra - r} Q${x + barra},${t} ${x + barra},${t + r} V${y(0)} Z" fill="${cor}"/>`
+            + `<text x="${(x + barra / 2).toFixed(1)}" y="${(t - 4).toFixed(1)}" text-anchor="middle" fill="${COR_TEXTO_ROTULO}" font-size="${estreito ? 9 : 10}" style="font-variant-numeric:tabular-nums">${estreito ? Math.round(v) + '%' : pct(v)}</text>`;
     };
     const grupos = NOMES.map((nome, i) => {
-        const x0 = margem.esquerda + faixa * i + (faixa - (barra * 2 + 2)) / 2;
-        return series.map((s, k) => coluna(x0 + k * (barra + 2), s.partes[i], s.cor)).join('')
+        const x0 = margem.esquerda + faixa * i + (faixa - (barra * 2 + vao)) / 2;
+        return series.map((s, k) => coluna(x0 + k * (barra + vao), s.partes[i], s.cor)).join('')
             + `<text x="${(margem.esquerda + faixa * i + faixa / 2).toFixed(1)}" y="${ALTURA_GRAFICO - 8}" text-anchor="middle" fill="${COR_TEXTO_EIXO}" font-size="11">${nome}</text>`
             + `<rect data-dia="${i}" x="${margem.esquerda + faixa * i}" y="${margem.topo}" width="${faixa}" height="${alturaUtil}" fill="transparent"/>`;
     }).join('');
