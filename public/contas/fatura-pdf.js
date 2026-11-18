@@ -43,6 +43,29 @@
         return parcelas;
     }
 
+    // Lançamentos à vista (sem parcela): base para reconhecer assinaturas.
+    // Pagamentos e estornos têm valor negativo e ficam de fora pela própria regex.
+    const NAO_E_COMPRA = /^(pagamento|iof|estorno|encargos?|juros|multa|anuidade|saldo|total)\b/i;
+    function avistaNasLinhas(linhas, regex, eParcela) {
+        const itens = [];
+        for (const linha of linhas) {
+            for (const m of linha.matchAll(regex)) {
+                const item = { descricao: limparDescricao(m[1]), valor: numero(m[2]) };
+                if (item.descricao && item.valor > 0 && !eParcela.test(item.descricao) && !NAO_E_COMPRA.test(item.descricao)) {
+                    itens.push(item);
+                }
+            }
+        }
+        return itens;
+    }
+    // 30/05 PG *GAMERS CLUB LTDASOR 21,90 (PicPay, Original e Itaú)
+    const AVISTA_DATA_BARRA = new RegExp('(?:^|\\s)\\d{2}/\\d{2}\\s+' + DESCRICAO + '\\s+' + VALOR + '(?=\\s|$)', 'g');
+
+    function linhasItau(linhas) {
+        const fim = linhas.findIndex(l => /Compras parceladas\s*-\s*pr[oó]ximas faturas/i.test(l));
+        return fim < 0 ? linhas : linhas.slice(0, fim);
+    }
+
     // Cada banco: como reconhecer o PDF, onde está o total, o vencimento e as parcelas.
     const BANCOS = {
         nubank: {
@@ -59,6 +82,9 @@
             // 28 SET •••• 2055 Mercadolivre*Mercadol - Parcela 8/10 R$ 71,69
             parcelas: linhas => parcelasNasLinhas(linhas, new RegExp(
                 '\\d{2}\\s+[A-Z]{3}\\s+(?:[•·*]+\\s*\\d{4}\\s+)?' + DESCRICAO + '\\s*-\\s*Parcela\\s+(\\d{1,2})\\s*/\\s*(\\d{1,2})\\s+R\\$\\s*' + VALOR, 'gi')),
+            // 06 OUT •••• 5704 Amazonprimebr R$ 19,90 (o final do cartão separa compras de outras linhas com data)
+            avista: linhas => avistaNasLinhas(linhas, new RegExp(
+                '\\d{2}\\s+[A-Z]{3}\\s+[•·*]+\\s*\\d{4}\\s+' + DESCRICAO + '\\s+R\\$\\s*' + VALOR, 'gi'), /-\s*Parcela\s+\d/i),
         },
         picpay: {
             nome: 'PicPay',
@@ -71,6 +97,7 @@
             // 14/03 CEA TAM 330 ECPARC02/03 113,32
             parcelas: linhas => parcelasNasLinhas(linhas, new RegExp(
                 '\\d{2}/\\d{2}\\s+' + DESCRICAO + '\\s*PARC\\s?(\\d{2})\\s*/\\s*(\\d{2})\\s+' + VALOR, 'g')),
+            avista: linhas => avistaNasLinhas(linhas, AVISTA_DATA_BARRA, /PARC\s?\d{2}\s*\/\s*\d{2}/i),
         },
         original: {
             nome: 'Original',
@@ -86,6 +113,7 @@
             // 28/10 TELHA NORTE PARC02/03 105,66
             parcelas: linhas => parcelasNasLinhas(linhas, new RegExp(
                 '\\d{2}/\\d{2}\\s+' + DESCRICAO + '\\s*PARC\\s?(\\d{2})\\s*/\\s*(\\d{2})\\s+' + VALOR, 'g')),
+            avista: linhas => avistaNasLinhas(linhas, AVISTA_DATA_BARRA, /PARC\s?\d{2}\s*\/\s*\d{2}/i),
         },
         itau: {
             nome: 'Itaú',
@@ -100,11 +128,9 @@
             },
             // 07/09 DECOLARBARUERI 10/12 199,25. O quadro "Compras parceladas - próximas faturas"
             // repete as mesmas compras com a parcela seguinte, então a leitura para nele.
-            parcelas: linhas => {
-                const fim = linhas.findIndex(l => /Compras parceladas\s*-\s*pr[oó]ximas faturas/i.test(l));
-                return parcelasNasLinhas(fim < 0 ? linhas : linhas.slice(0, fim), new RegExp(
-                    '\\d{2}/\\d{2}\\s+' + DESCRICAO + '\\s+(\\d{2})/(\\d{2})\\s+' + VALOR, 'g'));
-            },
+            parcelas: linhas => parcelasNasLinhas(linhasItau(linhas), new RegExp(
+                '\\d{2}/\\d{2}\\s+' + DESCRICAO + '\\s+(\\d{2})/(\\d{2})\\s+' + VALOR, 'g')),
+            avista: linhas => avistaNasLinhas(linhasItau(linhas), AVISTA_DATA_BARRA, /\s\d{2}\/\d{2}$/),
         },
     };
 
@@ -136,6 +162,7 @@
             total: total ? numero(total[1]) : null,
             vencimento: regras.vencimento(texto),
             parcelas: numerarRepetidas(regras.parcelas(linhas)),
+            avista: regras.avista(linhas),
             temTexto: texto.trim().length > 0,
         };
     }

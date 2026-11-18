@@ -10,6 +10,7 @@ const CONTAS_VALOR_MAXIMO = 9999999.99;
 // Bancos com leitor de fatura em public/contas/fatura-pdf.js
 const CONTAS_CARTOES = ['nubank', 'picpay', 'original', 'itau'];
 const CONTAS_PARCELAS_POR_FATURA = 200;
+const CONTAS_ASSINATURAS_POR_FATURA = 200;
 
 $usuario = $_SESSION['user'];
 $action = $_GET['action'] ?? '';
@@ -119,6 +120,45 @@ function parcelas_do_mes(PDO $pdo, string $usuario, string $mes): array
     return $porConta;
 }
 
+// Assinaturas cobradas no mês, por conta
+function assinaturas_do_mes(PDO $pdo, string $usuario, string $mes): array
+{
+    $stmt = $pdo->prepare('
+        SELECT a.conta_id, a.id, a.descricao, a.apelido, ac.valor
+        FROM assinatura_cobrancas ac
+        JOIN assinaturas a ON a.id = ac.assinatura_id
+        JOIN contas c ON c.id = a.conta_id
+        WHERE c.username = ? AND ac.mes = ?
+        ORDER BY COALESCE(a.apelido, a.descricao)
+    ');
+    $stmt->execute([$usuario, $mes]);
+    $porConta = [];
+    foreach ($stmt->fetchAll() as $a) {
+        $porConta[(int)$a['conta_id']][] = [
+            'id' => (int)$a['id'],
+            'descricao' => $a['descricao'],
+            'apelido' => $a['apelido'],
+            'valor' => (float)$a['valor'],
+        ];
+    }
+    return $porConta;
+}
+
+// Assinatura do usuário (id) ou encerra com 404
+function assinatura_do_usuario(PDO $pdo, string $usuario, $id): array
+{
+    $stmt = $pdo->prepare('
+        SELECT a.id, a.conta_id, a.descricao FROM assinaturas a JOIN contas c ON c.id = a.conta_id
+        WHERE a.id = ? AND c.username = ?
+    ');
+    $stmt->execute([filter_var($id, FILTER_VALIDATE_INT) ?: 0, $usuario]);
+    $assinatura = $stmt->fetch();
+    if (!$assinatura) {
+        responder_erro('Assinatura não encontrada.', 404);
+    }
+    return $assinatura;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Formulários de outros sites não conseguem enviar este tipo de conteúdo
     if (!str_starts_with($_SERVER['CONTENT_TYPE'] ?? '', 'application/json')) {
@@ -130,7 +170,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$acoesGravacao = ['valor', 'salvar', 'reabrir', 'conta_salvar', 'conta_ativar', 'fatura', 'apelido'];
+$acoesGravacao = ['valor', 'salvar', 'reabrir', 'conta_salvar', 'conta_ativar', 'fatura', 'apelido',
+    'assinatura_apelido', 'assinatura_cancelar', 'assinatura_remover'];
 if (in_array($action, $acoesGravacao, true) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     responder_erro('Método não permitido.', 405);
 }
@@ -159,6 +200,7 @@ try {
             $stmt->execute([$mes, $mes, $mes, $usuario, $salvoEm ? 1 : 0]);
             $contasMes = $stmt->fetchAll();
             $parcelas = parcelas_do_mes($pdo, $usuario, $mes);
+            $assinaturas = assinaturas_do_mes($pdo, $usuario, $mes);
 
             echo json_encode([
                 'mes' => substr($mes, 0, 7),
@@ -174,6 +216,7 @@ try {
                     'anterior' => $c['anterior'] === null ? null : (float)$c['anterior'],
                     'anteriorMes' => $c['anterior_mes'],
                     'parcelas' => $parcelas[(int)$c['id']] ?? [],
+                    'assinaturas' => $assinaturas[(int)$c['id']] ?? [],
                 ], $contasMes),
             ]);
             break;
@@ -328,6 +371,35 @@ try {
                 $parcelas[] = [$descricao, $apelido ?: null, $numero, $total, $inicio, round((float)$valorParcela, 2)];
             }
 
+            // assinatura = true: cobrança do mês (id = assinatura já conhecida, null = nova).
+            // assinatura = false: "não é assinatura", não volta a ser sugerida.
+            $recebidas = $pedido['assinaturas'] ?? [];
+            if (!is_array($recebidas) || count($recebidas) > CONTAS_ASSINATURAS_POR_FATURA) {
+                responder_erro('Lista de assinaturas inválida.');
+            }
+            $stmt = $pdo->prepare('SELECT id FROM assinaturas WHERE conta_id = ?');
+            $stmt->execute([$contaId]);
+            $idsDaConta = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+            $assinaturas = [];
+            $idsUsados = [];
+            foreach ($recebidas as $a) {
+                $descricao = texto_curto($a['descricao'] ?? '', 150);
+                $apelido = texto_curto($a['apelido'] ?? '', 100);
+                $valorAssinatura = $a['valor'] ?? null;
+                $id = $a['id'] ?? null;
+                if ($descricao === '' || !is_numeric($valorAssinatura) || $valorAssinatura <= 0 || $valorAssinatura > CONTAS_VALOR_MAXIMO) {
+                    responder_erro('Assinatura inválida: ' . ($descricao ?: 'sem descrição') . '.');
+                }
+                if ($id !== null) {
+                    $id = filter_var($id, FILTER_VALIDATE_INT);
+                    if ($id === false || !in_array($id, $idsDaConta, true) || isset($idsUsados[$id])) {
+                        responder_erro("Assinatura inválida: $descricao.");
+                    }
+                    $idsUsados[$id] = true;
+                }
+                $assinaturas[] = [$id, $descricao, $apelido ?: null, round((float)$valorAssinatura, 2), !empty($a['assinatura'])];
+            }
+
             $pdo->beginTransaction();
             if ($valor === null) {
                 $pdo->prepare('DELETE FROM lancamentos WHERE conta_id = ? AND mes = ?')->execute([$contaId, $mes]);
@@ -356,6 +428,36 @@ try {
             $pdo->prepare('
                 DELETE pa FROM parcelamentos pa LEFT JOIN parcelas p ON p.parcelamento_id = pa.id
                 WHERE pa.conta_id = ? AND p.id IS NULL
+            ')->execute([$contaId]);
+
+            $pdo->prepare('
+                DELETE ac FROM assinatura_cobrancas ac JOIN assinaturas a ON a.id = ac.assinatura_id
+                WHERE a.conta_id = ? AND ac.mes = ?
+            ')->execute([$contaId, $mes]);
+            $nova = $pdo->prepare('INSERT INTO assinaturas (conta_id, descricao, apelido) VALUES (?, ?, ?)');
+            // Voltar a aparecer na fatura desfaz o cancelamento
+            $atualiza = $pdo->prepare('UPDATE assinaturas SET descricao = ?, apelido = ?, cancelada = 0 WHERE id = ?');
+            $cobranca = $pdo->prepare('INSERT INTO assinatura_cobrancas (assinatura_id, mes, valor) VALUES (?, ?, ?)');
+            $ignora = $pdo->prepare('INSERT IGNORE INTO assinaturas_ignoradas (conta_id, descricao, valor) VALUES (?, ?, ?)');
+            foreach ($assinaturas as [$id, $descricao, $apelido, $valorAssinatura, $eAssinatura]) {
+                if (!$eAssinatura) {
+                    $ignora->execute([$contaId, $descricao, $valorAssinatura]);
+                    continue;
+                }
+                if ($id === null) {
+                    $nova->execute([$contaId, $descricao, $apelido]);
+                    $id = (int)$pdo->lastInsertId();
+                } else {
+                    $atualiza->execute([$descricao, $apelido, $id]);
+                }
+                $cobranca->execute([$id, $mes, $valorAssinatura]);
+                $pdo->prepare('DELETE FROM assinaturas_ignoradas WHERE conta_id = ? AND descricao = ? AND valor = ?')
+                    ->execute([$contaId, $descricao, $valorAssinatura]);
+            }
+            // Assinaturas que ficaram sem nenhuma cobrança (fatura desfeita ou reenviada sem elas)
+            $pdo->prepare('
+                DELETE a FROM assinaturas a LEFT JOIN assinatura_cobrancas ac ON ac.assinatura_id = a.id
+                WHERE a.conta_id = ? AND ac.id IS NULL
             ')->execute([$contaId]);
             $pdo->commit();
             echo json_encode(['sucesso' => true]);
@@ -400,6 +502,99 @@ try {
                 SET pa.apelido = ? WHERE pa.id = ? AND c.username = ?
             ');
             $stmt->execute([$apelido ?: null, $pedido['id'] ?? 0, $usuario]);
+            echo json_encode(['sucesso' => true]);
+            break;
+
+        // Assinaturas com a última cobrança e o último mês lido de cada cartão
+        case 'assinaturas':
+            $stmt = $pdo->prepare("
+                SELECT a.id, a.conta_id, c.nome AS conta, a.descricao, a.apelido, a.cancelada,
+                       DATE_FORMAT(MIN(ac.mes), '%Y-%m') AS primeiro_mes,
+                       DATE_FORMAT(MAX(ac.mes), '%Y-%m') AS ultimo_mes,
+                       COUNT(*) AS cobrancas,
+                       (SELECT u.valor FROM assinatura_cobrancas u WHERE u.assinatura_id = a.id ORDER BY u.mes DESC LIMIT 1) AS valor,
+                       (SELECT u.valor FROM assinatura_cobrancas u WHERE u.assinatura_id = a.id ORDER BY u.mes DESC LIMIT 1 OFFSET 1) AS valor_anterior
+                FROM assinaturas a
+                JOIN contas c ON c.id = a.conta_id
+                JOIN assinatura_cobrancas ac ON ac.assinatura_id = a.id
+                WHERE c.username = ?
+                GROUP BY a.id
+                ORDER BY c.nome, COALESCE(a.apelido, a.descricao)
+            ");
+            $stmt->execute([$usuario]);
+            $lista = $stmt->fetchAll();
+
+            // Último mês com fatura lida em cada cartão (por assinaturas ou parcelas)
+            $stmt = $pdo->prepare("
+                SELECT conta_id, DATE_FORMAT(MAX(mes), '%Y-%m') AS mes FROM (
+                    SELECT a.conta_id, ac.mes FROM assinatura_cobrancas ac JOIN assinaturas a ON a.id = ac.assinatura_id
+                    UNION ALL
+                    SELECT pa.conta_id, p.mes FROM parcelas p JOIN parcelamentos pa ON pa.id = p.parcelamento_id
+                ) m
+                JOIN contas c ON c.id = m.conta_id
+                WHERE c.username = ?
+                GROUP BY conta_id
+            ");
+            $stmt->execute([$usuario]);
+            $ultimaFatura = [];
+            foreach ($stmt->fetchAll() as $f) {
+                $ultimaFatura[(int)$f['conta_id']] = $f['mes'];
+            }
+
+            $stmt = $pdo->prepare('
+                SELECT i.conta_id, i.descricao, i.valor FROM assinaturas_ignoradas i
+                JOIN contas c ON c.id = i.conta_id WHERE c.username = ?
+            ');
+            $stmt->execute([$usuario]);
+
+            echo json_encode([
+                'hoje' => date('Y-m-d'),
+                'assinaturas' => array_map(fn($a) => [
+                    'id' => (int)$a['id'],
+                    'contaId' => (int)$a['conta_id'],
+                    'conta' => $a['conta'],
+                    'descricao' => $a['descricao'],
+                    'apelido' => $a['apelido'],
+                    'cancelada' => (bool)$a['cancelada'],
+                    'primeiroMes' => $a['primeiro_mes'],
+                    'ultimoMes' => $a['ultimo_mes'],
+                    'cobrancas' => (int)$a['cobrancas'],
+                    'valor' => (float)$a['valor'],
+                    'valorAnterior' => $a['valor_anterior'] === null ? null : (float)$a['valor_anterior'],
+                    'ultimaFatura' => $ultimaFatura[(int)$a['conta_id']] ?? $a['ultimo_mes'],
+                ], $lista),
+                'ignoradas' => array_map(fn($i) => [
+                    'contaId' => (int)$i['conta_id'],
+                    'descricao' => $i['descricao'],
+                    'valor' => (float)$i['valor'],
+                ], $stmt->fetchAll()),
+            ]);
+            break;
+
+        case 'assinatura_apelido':
+            $assinatura = assinatura_do_usuario($pdo, $usuario, $pedido['id'] ?? null);
+            $apelido = texto_curto($pedido['apelido'] ?? '', 100);
+            $pdo->prepare('UPDATE assinaturas SET apelido = ? WHERE id = ?')->execute([$apelido ?: null, $assinatura['id']]);
+            echo json_encode(['sucesso' => true]);
+            break;
+
+        case 'assinatura_cancelar':
+            $assinatura = assinatura_do_usuario($pdo, $usuario, $pedido['id'] ?? null);
+            $pdo->prepare('UPDATE assinaturas SET cancelada = ? WHERE id = ?')
+                ->execute([empty($pedido['cancelada']) ? 0 : 1, $assinatura['id']]);
+            echo json_encode(['sucesso' => true]);
+            break;
+
+        // "Não é assinatura": apaga o histórico e passa a ignorar a descrição com os valores já cobrados
+        case 'assinatura_remover':
+            $assinatura = assinatura_do_usuario($pdo, $usuario, $pedido['id'] ?? null);
+            $pdo->beginTransaction();
+            $pdo->prepare('
+                INSERT IGNORE INTO assinaturas_ignoradas (conta_id, descricao, valor)
+                SELECT DISTINCT ?, ?, valor FROM assinatura_cobrancas WHERE assinatura_id = ?
+            ')->execute([$assinatura['conta_id'], $assinatura['descricao'], $assinatura['id']]);
+            $pdo->prepare('DELETE FROM assinaturas WHERE id = ?')->execute([$assinatura['id']]);
+            $pdo->commit();
             echo json_encode(['sucesso' => true]);
             break;
 

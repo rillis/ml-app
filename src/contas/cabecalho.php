@@ -1,8 +1,9 @@
 <?php
-// Recebe $paginaContas: 'mes', 'parcelas', 'insights' ou 'cadastro'
+// Recebe $paginaContas: 'mes', 'parcelas', 'assinaturas', 'insights' ou 'cadastro'
 $abasContas = [
     'mes'      => ['/contas/', '🗓️ Mês'],
     'parcelas' => ['/contas/parcelas.php', '🧾 Parcelas'],
+    'assinaturas' => ['/contas/assinaturas.php', '🔁 Assinaturas'],
     'insights' => ['/contas/insights.php', '📊 Insights'],
     'cadastro' => ['/contas/cadastro.php', '⚙️ Gerenciar contas'],
 ];

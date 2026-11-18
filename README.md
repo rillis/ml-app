@@ -100,6 +100,18 @@ Bancos criados antes desse recurso precisam da migração:
 mysql contas_pessoais < sql/migracoes/2026-11-16-faturas-pdf.sql
 ```
 
+### Assinaturas
+
+A mesma leitura separa os lançamentos à vista e marca como assinatura os que batem com a lista de serviços em `public/contas/assinaturas-conhecidas.js` (Netflix, Spotify, Amazon Prime, Apple.com/bill etc.). Na revisão dá para desmarcar ("não é assinatura", não volta a ser sugerida), dar um apelido ou marcar qualquer outro lançamento.
+
+Nas faturas seguintes a cobrança é ligada à assinatura pela descrição e pelo valor; se só a descrição bater, o valor novo é registrado e aparece como mudança de preço. Assinatura que não vem na última fatura lida do cartão aparece como "cancelada?" na aba **🔁 Assinaturas**, onde dá para confirmar o cancelamento. Serviço novo na lista = uma linha em `SERVICOS`.
+
+Migração:
+
+```bash
+mysql contas_pessoais < sql/migracoes/2026-11-18-assinaturas.sql
+```
+
 ## Alerta no Discord (`alerta/`)
 
 Script Python que roda pelo cron do host, fora do container. Manda um embed por nível, na cor dele, e menciona em cascata: o pior nível do dia marca o cargo dele e os cargos dos níveis abaixo. Assim, quem tem só o cargo Urgente é avisado em dias de Urgente ou Crítico.

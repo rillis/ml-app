@@ -68,6 +68,16 @@ $paginaContas = 'mes';
                     <p class="text-xs text-gray-500 mb-3">Desmarque o que não quiser acompanhar. O apelido segue para as próximas faturas da mesma compra.</p>
                     <div id="faturaParcelas" class="space-y-2"></div>
                 </div>
+                <div>
+                    <h3 id="faturaTituloAssinaturas" class="font-semibold text-gray-200 mb-1"></h3>
+                    <p class="text-xs text-gray-500 mb-3">Reconhecidas pela lista de serviços ou por já estarem na aba Assinaturas. Desmarcar = não é assinatura (não volta a ser sugerida).</p>
+                    <div id="faturaAssinaturas" class="space-y-2"></div>
+                    <div id="faturaSumiram" class="mt-3 text-sm empty:hidden"></div>
+                    <details id="faturaOutrosBloco" class="mt-3">
+                        <summary id="faturaOutrosTitulo" class="cursor-pointer text-sm text-gray-400 hover:text-gray-200 select-none"></summary>
+                        <div id="faturaOutros" class="mt-2 space-y-2"></div>
+                    </details>
+                </div>
             </div>
             <div class="p-4 sm:p-6 pt-4 border-t border-gray-700 flex justify-end gap-3">
                 <button type="button" id="faturaCancelar" class="px-5 py-2.5 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors">Cancelar</button>
@@ -79,6 +89,7 @@ $paginaContas = 'mes';
     <script src="/assets/ui.js?v=<?= filemtime(__DIR__ . '/../assets/ui.js') ?>"></script>
     <script src="comum.js?v=<?= filemtime(__DIR__ . '/comum.js') ?>"></script>
     <script src="fatura-pdf.js?v=<?= filemtime(__DIR__ . '/fatura-pdf.js') ?>"></script>
+    <script src="assinaturas-conhecidas.js?v=<?= filemtime(__DIR__ . '/assinaturas-conhecidas.js') ?>"></script>
     <script>
     const parametroMes = new URLSearchParams(location.search).get('mes');
     let estado = null;
@@ -120,6 +131,21 @@ $paginaContas = 'mes';
             </details>`;
     }
 
+    function htmlAssinaturas(conta) {
+        if (!conta.assinaturas.length) return '';
+        const soma = conta.assinaturas.reduce((total, a) => total + a.valor, 0);
+        const itens = conta.assinaturas.map(a => `
+            <li class="flex justify-between gap-3">
+                <span class="min-w-0 break-words">${Contas.esc(a.apelido || a.descricao)}${a.apelido ? ` <span class="text-gray-500">· ${Contas.esc(a.descricao)}</span>` : ''}</span>
+                <span class="shrink-0 tabular-nums text-gray-300">${Contas.moeda(a.valor)}</span>
+            </li>`).join('');
+        return `
+            <details class="mt-3 border-t border-gray-700 pt-3 text-sm">
+                <summary class="cursor-pointer text-gray-400 hover:text-gray-200 select-none">🔁 Assinaturas: ${conta.assinaturas.length} · ${Contas.moeda(soma)}</summary>
+                <ul class="mt-2 space-y-1">${itens}</ul>
+            </details>`;
+    }
+
     function htmlConta(conta) {
         const editavel = !estado.salvoEm;
         const anterior = conta.anterior === null || !editavel ? '' : `
@@ -151,6 +177,7 @@ $paginaContas = 'mes';
                 </div>
             </div>
             ${htmlParcelas(conta)}
+            ${htmlAssinaturas(conta)}
             </div>`;
     }
 
@@ -279,7 +306,7 @@ $paginaContas = 'mes';
         const desfazer = e.target.closest('[data-desfazer]');
         if (!usar && !desfazer) return;
         const conta = estado.contas.find(c => c.id === Number(usar ? usar.dataset.usar : desfazer.dataset.desfazer));
-        if (desfazer && conta.parcelas.some(p => !p.prevista)) {
+        if (desfazer && (conta.parcelas.some(p => !p.prevista) || conta.assinaturas.length)) {
             desfazerFatura(conta);
             return;
         }
@@ -320,13 +347,14 @@ $paginaContas = 'mes';
 
         ML.toast(`Lendo ${arquivo.name}...`);
         try {
-            const [resultado, conhecidos] = await Promise.all([
+            const [resultado, conhecidos, assinaturas] = await Promise.all([
                 FaturaPdf.lerArquivo(arquivo, conta.cartao, pedirSenha),
                 Contas.api('parcelamentos').then(d => d.parcelamentos).catch(() => []),
+                Contas.api('assinaturas').catch(() => ({ assinaturas: [], ignoradas: [] })),
             ]);
             if (tentativa) senhasDaSessao[conta.cartao] = tentativa;
             if (estado.mes !== mes) return;
-            abrirRevisao(conta, arquivo.name, resultado, conhecidos);
+            abrirRevisao(conta, arquivo.name, resultado, conhecidos, assinaturas);
         } catch (erro) {
             if (erro.name === 'Cancelado') return;
             console.error(erro);
@@ -339,7 +367,48 @@ $paginaContas = 'mes';
         return `<p class="border rounded-lg px-3 py-2 ${cores[tipo]}">${Contas.esc(texto)}</p>`;
     }
 
-    function abrirRevisao(conta, nomeArquivo, resultado, conhecidos) {
+    function htmlItemAssinatura(a, i) {
+        const etiquetas = {
+            acompanhada: '<span class="text-emerald-400">já acompanhada</span>',
+            valor: `<span class="text-amber-300 font-semibold">valor mudou: ${Contas.moeda(a.valorAnterior)} → ${Contas.moeda(a.valor)}</span>`,
+            reativada: '<span class="text-amber-300">estava cancelada, voltou a cobrar</span>',
+            nova: `<span class="text-blue-300">nova · ${Contas.esc(a.servico)}</span>`,
+            ignorada: '<span class="text-gray-500">marcada antes como não assinatura</span>',
+            outro: '',
+        };
+        const etiqueta = etiquetas[a.motivo];
+        return `
+            <div class="bg-gray-900 border border-gray-700 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                <label class="flex items-start gap-3 min-w-0 flex-1 cursor-pointer">
+                    <input type="checkbox" data-assinatura-incluir="${i}" ${a.incluir ? 'checked' : ''} class="mt-1 h-4 w-4 accent-blue-500">
+                    <span class="min-w-0">
+                        <span class="block font-medium break-words">${Contas.esc(a.descricao)}</span>
+                        <span class="block text-xs text-gray-400">${Contas.moeda(a.valor)}${etiqueta ? ' · ' + etiqueta : ''}</span>
+                    </span>
+                </label>
+                <input type="text" data-assinatura-apelido="${i}" maxlength="100" autocomplete="off" placeholder="Apelido (opcional)" value="${Contas.esc(a.apelido)}"
+                       aria-label="Apelido de ${Contas.esc(a.descricao)}"
+                       class="w-full sm:w-48 bg-gray-800 border border-gray-700 rounded-lg p-2 text-sm text-gray-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
+            </div>`;
+    }
+
+    function renderizarAssinaturasRevisao() {
+        const { assinaturas, sumiram } = revisao;
+        const marcadas = assinaturas.filter(a => a.incluir);
+        const principais = assinaturas.map((a, i) => [a, i]).filter(([a]) => a.sugerida);
+        const outros = assinaturas.map((a, i) => [a, i]).filter(([a]) => !a.sugerida);
+        document.getElementById('faturaTituloAssinaturas').textContent = principais.length || marcadas.length
+            ? `Assinaturas (${marcadas.length}) · ${Contas.moeda(marcadas.reduce((s, a) => s + a.valor, 0))}`
+            : 'Nenhuma assinatura reconhecida';
+        document.getElementById('faturaAssinaturas').innerHTML = principais.map(([a, i]) => htmlItemAssinatura(a, i)).join('');
+        document.getElementById('faturaSumiram').innerHTML = sumiram.length ? aviso(
+            `Não vieram nesta fatura: ${sumiram.map(a => `${a.apelido || a.descricao} (${Contas.moeda(a.valor)})`).join(', ')}. Na aba Assinaturas elas aparecem como "cancelada?".`, 'alerta') : '';
+        document.getElementById('faturaOutrosBloco').classList.toggle('hidden', outros.length === 0);
+        document.getElementById('faturaOutrosTitulo').textContent = `Marcar outro lançamento como assinatura (${outros.length})`;
+        document.getElementById('faturaOutros').innerHTML = outros.map(([a, i]) => htmlItemAssinatura(a, i)).join('');
+    }
+
+    function abrirRevisao(conta, nomeArquivo, resultado, conhecidos, dadosAssinaturas) {
         const mes = estado.mes;
         const banco = FaturaPdf.BANCOS[conta.cartao];
         const itens = resultado.parcelas.map(p => {
@@ -347,7 +416,10 @@ $paginaContas = 'mes';
             const conhecido = conhecidos.find(k => k.contaId === conta.id && k.descricao === p.descricao && k.total === p.total && k.mesInicio === inicio);
             return { ...p, incluir: true, apelido: conhecido?.apelido || '', conhecido: !!conhecido };
         });
-        revisao = { conta, mes, itens };
+        const daConta = x => x.contaId === conta.id;
+        const casadas = AssinaturasConhecidas.casar(resultado.avista,
+            dadosAssinaturas.assinaturas.filter(daConta), dadosAssinaturas.ignoradas.filter(daConta), mes);
+        revisao = { conta, mes, itens, assinaturas: casadas.itens, sumiram: casadas.sumiram };
 
         const avisos = [];
         if (!resultado.temTexto) avisos.push(aviso('O PDF não tem texto (parece digitalizado). Preencha manualmente.', 'alerta'));
@@ -358,8 +430,8 @@ $paginaContas = 'mes';
         if (resultado.vencimento && resultado.vencimento.slice(0, 7) !== mes) {
             avisos.push(aviso(`A fatura vence em ${resultado.vencimento.split('-').reverse().join('/')}, mas você está em ${Contas.mesLabel(mes)}. O valor e as parcelas entram neste mês.`, 'alerta'));
         }
-        if (conta.valor !== null || conta.parcelas.some(p => !p.prevista)) {
-            avisos.push(aviso('Aplicar substitui o valor e as parcelas já lançados neste cartão neste mês.', 'info'));
+        if (conta.valor !== null || conta.parcelas.some(p => !p.prevista) || conta.assinaturas.length) {
+            avisos.push(aviso('Aplicar substitui o valor, as parcelas e as assinaturas já lançados neste cartão neste mês.', 'info'));
         }
 
         document.getElementById('faturaTitulo').textContent = `Fatura ${banco} · ${Contas.mesLabel(mes)}`;
@@ -389,6 +461,8 @@ $paginaContas = 'mes';
                            class="w-full sm:w-48 bg-gray-800 border border-gray-700 rounded-lg p-2 text-sm text-gray-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500">
                 </div>`;
         }).join('');
+        document.getElementById('faturaOutrosBloco').open = false;
+        renderizarAssinaturasRevisao();
 
         const modal = document.getElementById('modalFatura');
         modal.classList.remove('hidden');
@@ -414,7 +488,7 @@ $paginaContas = 'mes';
             campoValor.focus();
             return;
         }
-        const { conta, mes, itens } = revisao;
+        const { conta, mes, itens, assinaturas } = revisao;
         const botao = document.getElementById('faturaAplicar');
         botao.disabled = true;
         try {
@@ -424,9 +498,14 @@ $paginaContas = 'mes';
                 mes,
                 valor,
                 parcelas: itens.filter(p => p.incluir).map(({ descricao, numero, total, valor, apelido }) => ({ descricao, numero, total, valor, apelido })),
+                // Sugeridas e desmarcadas vão como "não é assinatura"; outros lançamentos só se marcados
+                assinaturas: assinaturas.filter(a => a.incluir || a.sugerida)
+                    .map(({ id, descricao, valor, apelido, incluir }) => ({ id: incluir ? id : null, descricao, valor, apelido, assinatura: incluir })),
             });
             const quantas = itens.filter(p => p.incluir).length;
-            ML.toast(`${conta.nome}: fatura aplicada${quantas ? ` com ${quantas} parcela(s)` : ''}.`, 'sucesso');
+            const quantasAssinaturas = assinaturas.filter(a => a.incluir).length;
+            const partes = [quantas && `${quantas} parcela(s)`, quantasAssinaturas && `${quantasAssinaturas} assinatura(s)`].filter(Boolean);
+            ML.toast(`${conta.nome}: fatura aplicada${partes.length ? ' com ' + partes.join(' e ') : ''}.`, 'sucesso');
             fecharRevisao();
             await carregarMes(mes, false);
         } catch (erro) {
@@ -437,7 +516,7 @@ $paginaContas = 'mes';
     }
 
     async function desfazerFatura(conta) {
-        const confirmou = await ML.confirmar(`Remover o valor e as parcelas da fatura ${conta.nome} em ${Contas.mesLabel(estado.mes)}? Os apelidos das compras que ainda têm parcelas em outros meses são mantidos.`, {
+        const confirmou = await ML.confirmar(`Remover o valor, as parcelas e as assinaturas da fatura ${conta.nome} em ${Contas.mesLabel(estado.mes)}? Os apelidos das compras e assinaturas que aparecem em outros meses são mantidos.`, {
             titulo: 'Desfazer fatura',
             textoConfirmar: 'Remover',
             perigo: true,
@@ -469,6 +548,19 @@ $paginaContas = 'mes';
         if (i === undefined) return;
         if (e.target.dataset.incluir !== undefined) revisao.itens[i].incluir = e.target.checked;
         else revisao.itens[i].apelido = e.target.value;
+    });
+    document.getElementById('modalFatura').addEventListener('input', e => {
+        const i = e.target.dataset.assinaturaIncluir ?? e.target.dataset.assinaturaApelido;
+        if (i === undefined) return;
+        const item = revisao.assinaturas[i];
+        if (e.target.dataset.assinaturaIncluir !== undefined) {
+            item.incluir = e.target.checked;
+            // Atualiza só o título, sem redesenhar (o foco continua no lugar)
+            const marcadas = revisao.assinaturas.filter(a => a.incluir);
+            document.getElementById('faturaTituloAssinaturas').textContent = `Assinaturas (${marcadas.length}) · ${Contas.moeda(marcadas.reduce((s, a) => s + a.valor, 0))}`;
+        } else {
+            item.apelido = e.target.value;
+        }
     });
     document.getElementById('faturaCancelar').addEventListener('click', fecharRevisao);
     document.getElementById('faturaAplicar').addEventListener('click', aplicarFatura);
