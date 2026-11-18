@@ -52,8 +52,10 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
                     <label class="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
                         <input id="mostrarSemVenda" type="checkbox" class="w-4 h-4 accent-blue-500" onchange="renderizar()"> Mostrar sem vendas
                     </label>
-                    <button id="btnCopiar" onclick="copiarEnvio()" title="Copiar anúncio, SKU e quantidade do envio"
-                            class="bg-gray-900 hover:bg-gray-700 border border-gray-700 hover:border-blue-500 text-gray-300 hover:text-blue-400 rounded-lg px-3 py-2 text-sm transition-colors">📋 Copiar envio</button>
+                    <button onclick="copiarEnvio('anuncios')" title="Uma linha por anúncio: MLB... - 2x"
+                            class="bg-gray-900 hover:bg-gray-700 border border-gray-700 hover:border-blue-500 text-gray-300 hover:text-blue-400 rounded-lg px-3 py-2 text-sm transition-colors">📋 Copiar envio (anúncios)</button>
+                    <button onclick="copiarEnvio('skus')" title="Kits abertos e somados por SKU: KF-133 - 6x"
+                            class="bg-gray-900 hover:bg-gray-700 border border-gray-700 hover:border-blue-500 text-gray-300 hover:text-blue-400 rounded-lg px-3 py-2 text-sm transition-colors">📋 Copiar envio (SKU)</button>
                 </div>
             </div>
             <div class="overflow-x-auto">
@@ -180,7 +182,6 @@ function renderizar() {
     const hoje = paraTexto(new Date());
     const unidades = linhasEnvio.reduce((t, l) => t + l.quantidade, 0);
     const zerados = comVenda.filter(l => l.disponivel === 0).length;
-    const semLocal = linhasEnvio.filter(l => l.local !== undefined && l.local < l.quantidade).length;
 
     let proximoTexto = '—', proximoDetalhe = 'nenhum anúncio com vendas', destaque = '';
     if (proximo) {
@@ -196,7 +197,7 @@ function renderizar() {
     document.getElementById('resumo').innerHTML = [
         cartao('Próximo envio', proximoTexto, proximoDetalhe, destaque),
         cartao('Anúncios no envio', linhasEnvio.length, `não aguentam os próximos ${ciclo} dias`),
-        cartao('Unidades no envio', unidades.toLocaleString('pt-BR'), semLocal ? `<span class="text-amber-300">${semLocal} sem estoque local suficiente</span>` : 'cobrem prazo + ciclo + segurança'),
+        cartao('Unidades no envio', unidades.toLocaleString('pt-BR'), 'cobrem prazo + ciclo + segurança'),
         cartao('Zerados no Full', zerados, 'anúncios com vendas e 0 disponível', zerados ? 'border-red-500/60' : ''),
     ].join('');
 
@@ -211,8 +212,7 @@ function renderizar() {
     document.getElementById('tabela').innerHTML = visiveis.length ? visiveis.map(l => {
         const [rotulo, classe] = ROTULO_SITUACAO[l.situacao];
         const dura = !Number.isFinite(l.cobertura) ? '—' : l.cobertura >= 999 ? '999+' : `${Math.floor(l.cobertura)} d`;
-        const localTexto = l.local === undefined ? '<span class="text-gray-600">—</span>'
-            : `<span class="${l.noEnvio && l.local < l.quantidade ? 'text-amber-300' : ''}">${l.local}</span>`;
+        const localTexto = l.local === undefined ? '<span class="text-gray-600">—</span>' : l.local;
         const link = `https://produto.mercadolivre.com.br/${l.anuncio.replace(/^MLB/, 'MLB-')}`;
         const dividido = l.compartilha.length
             ? `<div class="text-xs text-violet-300">estoque dividido com ${l.compartilha.map(esc).join(', ')}${l.principal ? '' : ' · sugestão na linha de cima'}</div>` : '';
@@ -240,12 +240,21 @@ function renderizar() {
     }).join('') : '<tr><td colspan="7" class="py-6 text-center text-gray-500">Nenhum anúncio no Full. Use o botão Atualizar.</td></tr>';
 }
 
-async function copiarEnvio() {
+// Por anúncio: "MLB... - 2x". Por SKU: abre os kits (SKUs separados por +) e soma tudo: "KF-133 - 6x".
+function textoEnvio(modo) {
+    if (modo === 'anuncios') return linhasEnvio.map(l => `${l.anuncio} - ${l.quantidade}x`).join('\n');
+    const porSku = new Map();
+    linhasEnvio.forEach(l => (l.sku || l.anuncio).split('+').map(p => p.trim().toUpperCase()).filter(Boolean)
+        .forEach(sku => porSku.set(sku, (porSku.get(sku) || 0) + l.quantidade)));
+    return [...porSku].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR')).map(([sku, qtd]) => `${sku} - ${qtd}x`).join('\n');
+}
+
+async function copiarEnvio(modo) {
     if (!linhasEnvio.length) { ML.toast('Nada para enviar agora.', 'info'); return; }
-    const texto = linhasEnvio.map(l => `${l.anuncio}\t${l.sku}\t${l.quantidade}`).join('\n');
+    const texto = textoEnvio(modo);
     try {
         await navigator.clipboard.writeText(texto);
-        ML.toast(`${linhasEnvio.length} anúncios copiados (anúncio, SKU e quantidade).`, 'sucesso');
+        ML.toast(`${texto.split('\n').length} ${modo === 'anuncios' ? 'anúncios' : 'SKUs'} copiados.`, 'sucesso');
     } catch (e) {
         ML.toast('Não foi possível copiar.', 'erro');
     }

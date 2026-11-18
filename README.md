@@ -56,7 +56,8 @@ Sugestão por anúncio, com os parâmetros da tela (ciclo, prazo e segurança, g
 - **Venda por dia:** a maior média entre os últimos 30 e 60 dias completos, só das vendas pelo Full daquele anúncio.
 - **Enviar até:** o dia em que o estoque entra na margem (prazo + segurança).
 - **Entra no envio de hoje:** quem não aguenta até o próximo envio (um ciclo). A quantidade cobre prazo + ciclo + segurança.
-- **Local:** estoque do módulo Estoque pelo SKU, para saber se dá para mandar.
+- **Local:** estoque do módulo Estoque pelo SKU, só para consulta.
+- **Copiar envio:** por anúncio (`MLB... - 2x`) ou por SKU, abrindo os kits e somando (`KF-133 - 6x`).
 
 Unidades já enviadas que o ML ainda não recebeu não aparecem na API, então não entram na conta.
 
