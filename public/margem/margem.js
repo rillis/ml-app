@@ -53,6 +53,7 @@ function abrirAba(aba) {
     });
     if (history.replaceState) history.replaceState(null, '', '#' + aba);
     if (aba === 'tabelas') carregarTabelas();
+    if (aba === 'simulador') $('#simSku').focus();
 }
 
 // ===================================================================== estado geral
@@ -286,7 +287,7 @@ function renderTabelaMargem() {
         const status = l.status && l.status !== 'active' ? pilula(STATUS[l.status] || l.status, 'border-gray-600 text-gray-400') : '';
         const margemCel = l.situacao === 'sem'
             ? `<span class="text-red-300 text-xs" title="${esc(l.como)}">sem custo</span>`
-            : pilula(l.situacao === 'gratis' ? 'grátis' : pct(l.margem), COR_MARGEM[l.situacao]);
+            : pilula(l.situacao === 'gratis' ? 'grátis' : pct(l.margem, 2), COR_MARGEM[l.situacao]);
         return `<tr class="border-t border-gray-700/60 align-top">
             <td class="py-2 pr-2 sm:pr-3 max-w-[11rem] sm:max-w-sm">
                 <div class="flex flex-wrap items-center gap-2">
@@ -319,7 +320,7 @@ async function carregarTeste() {
         <a class="text-blue-400 hover:text-blue-300" href="${urlPlanilha('margem', r.planilha)}">⬇️ ${esc(r.planilha)}</a></div>
         ${r.linhas.map(l => `<div class="flex flex-wrap justify-between gap-2 border-t border-gray-800 py-1">
             <span><span class="text-gray-200 font-semibold">${esc(l.sku || '(sem SKU)')}</span> <span class="text-gray-500">${esc(l.codigo)}</span></span>
-            <span class="tabular-nums text-gray-300">${brl(l.preco)} · margem ${l.custo == null ? 'sem custo' : pct(l.margem)} · sugerido ${brl(l.preco_sugerido)}</span>
+            <span class="tabular-nums text-gray-300">${brl(l.preco)} · margem ${l.custo == null ? 'sem custo' : pct(l.margem, 2)} · sugerido ${brl(l.preco_sugerido)}</span>
         </div>`).join('')}</div>`;
 }
 
@@ -471,6 +472,55 @@ async function trocarTabela(nome, input) {
     }
 }
 
+// ===================================================================== simulador
+
+// Preço sugerido de um SKU com taxa, frete e adc digitados; mostra o custo de cada parte do SKU
+async function simular() {
+    const caixa = $('#resultadoSimular');
+    let r;
+    try {
+        r = await postJson('simular', { sku: $('#simSku').value, taxa: $('#simTaxa').value, frete: $('#simFrete').value, adc: $('#simAdc').value });
+    } catch (erro) {
+        caixa.innerHTML = `<p class="text-sm text-red-300">${esc(erro.message)}</p>`;
+        return;
+    }
+    const pecasDe = p => {
+        // mostra as peças da tabela só quando não são a própria parte (apelido, barra, pontuação)
+        const iguais = p.pecas.length === 1 && p.pecas[0].sku.toUpperCase() === p.parte.toUpperCase() && p.pecas[0].qtd === 1;
+        if (!p.pecas.length || iguais) return '';
+        return '<div class="text-xs text-gray-500 mt-0.5">' + p.pecas.map(x =>
+            `${x.qtd > 1 ? x.qtd + '× ' : ''}<span class="font-mono">${esc(x.sku)}</span> ${x.gratis ? 'grátis' : brl(x.preco)}`).join(' + ') + '</div>';
+    };
+    const linhas = r.partes.map(p => `<tr class="border-t border-gray-700/60">
+        <td class="py-1.5 pr-3"><span class="font-mono">${esc(p.parte)}</span>${pecasDe(p)}</td>
+        <td class="py-1.5 px-3 text-right tabular-nums">${p.qtd}</td>
+        <td class="py-1.5 px-3 text-right tabular-nums">${p.unitario == null ? '<span class="text-red-300">sem preço</span>' : brl(p.unitario)}</td>
+        <td class="py-1.5 px-3 text-right tabular-nums">${brl(p.subtotal)}</td>
+        <td class="py-1.5 pl-3 text-gray-400">${esc(p.como)}</td></tr>`).join('');
+    const tabela = `<div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead class="text-gray-400 text-left"><tr><th class="font-medium py-1 pr-3">Parte do SKU</th><th class="font-medium py-1 px-3 text-right">Qtd</th>
+        <th class="font-medium py-1 px-3 text-right">Custo un.</th><th class="font-medium py-1 px-3 text-right">Subtotal</th><th class="font-medium py-1 pl-3">Como achou</th></tr></thead>
+        <tbody>${linhas}</tbody>
+        <tfoot class="border-t border-gray-600"><tr><td class="py-1.5 pr-3 font-semibold" colspan="3">Custo da tabela</td>
+        <td class="py-1.5 px-3 text-right tabular-nums font-semibold">${brl(r.custo)}</td><td class="py-1.5 pl-3 text-gray-400">${esc(r.custo == null ? '' : r.como)}</td></tr>
+        ${r.custo == null ? '' : `<tr><td class="py-1 pr-3 text-gray-400" colspan="3">Com ${pct(r.desconto, 0)} de desconto do fornecedor</td>
+        <td class="py-1 px-3 text-right tabular-nums">${brl(r.custo_desc)}</td><td></td></tr>`}</tfoot></table></div>`;
+
+    let topo;
+    if (r.custo == null) {
+        topo = `<p class="text-sm text-red-300 mb-3">Sem custo: ${esc(r.falta.join(', ') || r.como)} não está na tabela de preços nem nos apelidos.</p>`;
+    } else {
+        const aviso = r.so_gratis ? '<p class="text-sm text-amber-300 mb-3">Este SKU só tem itens grátis: na planilha ele fica com o preço atual.</p>' : '';
+        topo = aviso + `<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            ${cartao('Preço sugerido', brl(r.preco_sugerido), `margem alvo ${pctMeta(r.meta)}`, 'border-blue-500/60')}
+            ${cartao('Você recebe', brl(r.recebe), `taxa ${brl(r.valor_taxa)} · frete ${brl(r.frete)} · adc ${brl(r.adc)}`)}
+            ${cartao('Lucro', brl(r.lucro), `margem ${pct(r.margem, 2)} (antes do imposto)`)}
+            ${cartao('Depois do imposto', brl(r.lucro_liquido), `imposto ${brl(r.imposto)}`)}
+        </div>`;
+    }
+    caixa.innerHTML = topo + tabela;
+}
+
 // ===================================================================== eventos
 
 // Soma das três partes da margem alvo enquanto digita
@@ -530,6 +580,7 @@ function ligarEventos() {
         $('#formMetas').classList.toggle('hidden');
     });
     $('#btnMetasCancelar').addEventListener('click', () => $('#formMetas').classList.add('hidden'));
+    $('#formSimular').addEventListener('submit', e => { e.preventDefault(); simular(); });
     ['#campoLucro', '#campoGordura', '#campoImposto'].forEach(s => $(s).addEventListener('input', somarMeta));
 
     // Atualizar só alguns anúncios: os códigos MLB colados viram a lista, sem repetir

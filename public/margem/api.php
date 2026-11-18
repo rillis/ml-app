@@ -59,6 +59,7 @@ $rotas = [
     'skus'            => ['GET', '/api/skus'],
     'planilhas'       => ['GET', '/api/planilhas/'],
     'config'          => ['POST', '/api/config'],
+    'simular'         => ['POST', '/api/simular'],
     'tabelas'         => ['GET', '/api/tabelas'],
     'trocar_tabela'   => ['POST', '/api/tabelas/', 'arquivo'],
     'envio'           => ['POST', '/api/envio', 'arquivo'],

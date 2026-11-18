@@ -31,6 +31,7 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
 
         <nav id="abas" class="flex gap-1 sm:gap-2 mb-6 overflow-x-auto [scrollbar-width:none]" aria-label="Seções">
             <button type="button" data-aba="margem">💲 Margem</button>
+            <button type="button" data-aba="simulador">🧪 Simulador</button>
             <button type="button" data-aba="skus">🔍 SKUs</button>
             <button type="button" data-aba="envio">📦 Envio</button>
             <button type="button" data-aba="tabelas">📄 Tabelas</button>
@@ -163,6 +164,30 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
                     </div>
                 </div>
             </details>
+        </div>
+
+        <!-- ===== SIMULADOR ===== -->
+        <div data-secao="simulador" class="hidden">
+            <section class="<?= $classeCartao ?>">
+                <h2 class="text-lg font-semibold text-gray-200">Simulador de preço</h2>
+                <p id="infoSimular" class="text-sm text-gray-400 mt-1 mb-4">Preço sugerido de um SKU com a taxa, o frete e o adc que você digitar, pelo custo da tabela de preços.</p>
+                <form id="formSimular" class="flex flex-wrap items-end gap-3">
+                    <label class="text-sm text-gray-400 flex flex-col gap-1 flex-1 min-w-[14rem]">SKU
+                        <input id="simSku" type="text" autocomplete="off" spellcheck="false" placeholder="3xKA-250+KF-104" class="<?= $classeCampo ?> font-mono">
+                    </label>
+                    <label class="text-sm text-gray-400 flex flex-col gap-1" title="Tarifa de venda do ML, em % do preço">Taxa ML (%)
+                        <input id="simTaxa" type="text" inputmode="decimal" placeholder="16,5" class="<?= $classeCampo ?> w-24">
+                    </label>
+                    <label class="text-sm text-gray-400 flex flex-col gap-1" title="Custo de envio que o ML cobra de você">Frete (R$)
+                        <input id="simFrete" type="text" inputmode="decimal" placeholder="0" class="<?= $classeCampo ?> w-24">
+                    </label>
+                    <label class="text-sm text-gray-400 flex flex-col gap-1" title="Custo fixo por venda (abaixo de R$ 79)">Adc (R$)
+                        <input id="simAdc" type="text" inputmode="decimal" placeholder="0" class="<?= $classeCampo ?> w-24">
+                    </label>
+                    <button type="submit" class="<?= $classePrimario ?>">Calcular</button>
+                </form>
+                <div id="resultadoSimular" class="mt-4 empty:hidden" aria-live="polite"></div>
+            </section>
         </div>
 
         <!-- ===== SKUS ===== -->
