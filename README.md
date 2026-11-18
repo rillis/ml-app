@@ -24,6 +24,10 @@ O botão **Atualizar** busca no ML só o que mudou desde a última cópia (`orde
 
 Na comparação por dias úteis, a comparação começa no mesmo dia do período anterior e vai até juntar a mesma quantidade de dias úteis do período atual (até hoje). Fins de semana e os feriados da tabela `ml_boletos.feriados` não contam.
 
+**Projeção do mês atual:** média de três métodos, todos com os dias completos até ontem: perfil da semana (peso de cada dia nas 8 semanas antes do mês), ritmo dos últimos 28 dias e ritmo dos últimos 7 dias, os dois aplicados aos dias que faltam. Feriado conta como domingo. O que falta é dividido entre Full e normal pelo mix do mês até agora. A faixa (±) é o erro médio da média dos três métodos em fev–out/2026, em cada ponto do mês (`ERRO_PROJECAO` em `public/vendas/index.php`). Ela aparece na barra do mês em "Faturamento por mês" e como linha roxa no acumulado.
+
+No gráfico de acumulado, a comparação usa sempre o calendário, mesmo com dias úteis selecionados. Período que começa no dia 1 mostra o mês inteiro, e a comparação também.
+
 Full ou normal vem de `order_items[].stock.node_id`: armazém do ML (`BRSP02`, `BRSP04`...) é Full. Pedidos de antes de 2026-07 não trazem esse campo; para eles a cópia consulta o envio (`/shipments`).
 
 Carga completa pela linha de comando (refaz tudo desde `VENDAS_INICIO`, sem apagar nada):

@@ -40,7 +40,7 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
             <label class="text-sm text-gray-400 flex flex-col gap-1">Comparar com
                 <select id="comparacao" class="<?= $classeSelect ?>" onchange="renderizar()">
                     <option value="anterior">Período anterior</option>
-                    <option value="uteis">Período anterior (dias úteis)</option>
+                    <option value="uteis" selected>Período anterior (dias úteis)</option>
                     <option value="ano">Mesmo período do ano passado</option>
                 </select>
             </label>
@@ -68,7 +68,7 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
         <section class="<?= $classeCartao ?>">
             <div class="flex flex-wrap justify-between items-baseline gap-2 mb-4">
                 <h2 class="text-lg font-semibold text-gray-200">Faturamento por mês</h2>
-                <div id="legendaMensal" class="flex gap-4 text-sm text-gray-300"></div>
+                <div id="legendaMensal" class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-300"></div>
             </div>
             <div id="graficoMensal" class="relative"></div>
         </section>
@@ -76,9 +76,10 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
         <section class="<?= $classeCartao ?>">
             <div class="flex flex-wrap justify-between items-baseline gap-2 mb-4">
                 <h2 class="text-lg font-semibold text-gray-200">Faturamento acumulado no período</h2>
-                <div id="legendaAcumulado" class="flex gap-4 text-sm text-gray-300"></div>
+                <div id="legendaAcumulado" class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-300"></div>
             </div>
             <div id="graficoAcumulado" class="relative"></div>
+            <p id="notaAcumulado" class="text-xs text-gray-500 mt-1"></p>
         </section>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -136,6 +137,14 @@ const COR_NORMAL = '#d95926';
 const COR_PREMIUM = '#199e70';
 const COR_CLASSICO = '#c98500';
 const COR_ATUAL = '#3987e5';
+// Faturamento por mês: realizado em azul, projeção do mês atual em roxo (escuro = Full, claro = normal)
+const COR_REAL_FULL = '#2f6fd6';
+const COR_REAL_NORMAL = '#93c5fd';
+const COR_PROJ_FULL = '#7c4ddb';
+const COR_PROJ_NORMAL = '#c4b5fd';
+const COR_PROJECAO = '#a78bfa';
+// Erro médio do backtest (fev–out/2026) da projeção, pelo dia do mês
+const ERRO_PROJECAO = [[3, 17.8], [7, 14.5], [10, 9.8], [15, 6.3], [20, 4.6], [25, 4.5]];
 const COR_COMPARACAO = '#9ca3af';
 const COR_FUNDO = '#1f2937';
 const COR_GRADE = '#374151';
@@ -211,6 +220,7 @@ function periodos() {
         cAte = somarDias(de, -1); cDe = somarDias(cAte, -(tamanho - 1));
     }
 
+    const calendario = { de: cDe, ate: cAte }; // sem dias úteis: base do gráfico de acumulado
     if (modo === 'uteis') {
         // Mesmo início do período anterior, andando até juntar a mesma quantidade de dias úteis
         uteis = contarUteis(de, ate < hoje ? ate : hoje);
@@ -222,7 +232,7 @@ function periodos() {
         }
         if (uteis === 0) cAte = cDe;
     }
-    return { atual: { de, ate }, comparacao: { de: cDe, ate: cAte }, uteis };
+    return { atual: { de, ate }, comparacao: { de: cDe, ate: cAte }, calendario, uteis };
 }
 
 // ===== Agregação =====
@@ -300,7 +310,7 @@ function renderizar() {
         </div>`).join('');
 
     renderizarMensal();
-    renderizarAcumulado(p, atual, comp, temBase);
+    renderizarAcumulado(p);
     renderizarDivisoes(atual, comp, temBase);
     renderizarSemana(p.atual);
     mostrarTodosSkus = false;
@@ -337,7 +347,88 @@ function mostrarDica(evento, html) {
 const esconderDica = () => document.getElementById('dica').classList.add('hidden');
 const linhaDica = (cor, nome, valor) => `<div class="flex justify-between gap-4"><span class="flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-sm" style="background:${cor}"></span>${esc(nome)}</span><span class="tabular-nums">${valor}</span></div>`;
 // Barras: quadrado. Linhas (linha = true): traço, contínuo ou tracejado como no gráfico.
-const legenda = itens => itens.map(([cor, nome, linha, tracejado]) => `<span class="flex items-center gap-2"><span class="inline-block ${linha ? 'w-5 border-t-2' + (tracejado ? ' border-dashed' : '') : 'w-2.5 h-2.5 rounded-sm'}" style="${linha ? 'border-color:' + cor : 'background:' + cor}"></span>${nome}</span>`).join('');
+// estilo: '' contínua, 'tracejado' ou 'pontilhado'
+const legenda = itens => itens.map(([cor, nome, linha, estilo]) => `<span class="flex items-center gap-2"><span class="inline-block ${linha ? 'w-5 border-t-2' + (estilo === 'tracejado' ? ' border-dashed' : estilo === 'pontilhado' ? ' border-dotted' : '') : 'w-2.5 h-2.5 rounded-sm'}" style="${linha ? 'border-color:' + cor : 'background:' + cor}"></span>${nome}</span>`).join('');
+
+// ===== Projeção do mês atual =====
+// Média de 3 métodos (melhor resultado no backtest): perfil da semana, ritmo dos últimos 28 dias e dos últimos 7.
+// Usa só dias completos (até ontem). O restante previsto é dividido entre Full e normal pelo mix do mês até agora.
+const tipoDia = t => feriados.has(t) ? 6 : (paraData(t).getDay() + 6) % 7; // feriado conta como domingo
+
+function faturamentoPorDia() {
+    const mapa = new Map();
+    dados.dias.forEach(([dia, full, , fat]) => {
+        if (!mapa.has(dia)) mapa.set(dia, [0, 0]);
+        mapa.get(dia)[full] += fat;
+    });
+    return mapa;
+}
+
+// Peso de cada dia da semana nas 8 semanas que terminam em `ate` (1 = média)
+function pesosSemana(ate, valor) {
+    const grupos = [[], [], [], [], [], [], []];
+    for (let i = 0; i < 56; i++) {
+        const dia = somarDias(ate, -i);
+        grupos[tipoDia(dia)].push(valor(dia));
+    }
+    const media = soma(grupos.flat()) / 56;
+    return grupos.map(g => (g.length && media ? soma(g) / g.length / media : 1));
+}
+
+function erroProjecao(dia) {
+    if (dia <= ERRO_PROJECAO[0][0]) return ERRO_PROJECAO[0][1];
+    for (let k = 1; k < ERRO_PROJECAO.length; k++) {
+        const [d1, e1] = ERRO_PROJECAO[k - 1], [d2, e2] = ERRO_PROJECAO[k];
+        if (dia <= d2) return e1 + (e2 - e1) * (dia - d1) / (d2 - d1);
+    }
+    return ERRO_PROJECAO[ERRO_PROJECAO.length - 1][1];
+}
+
+function projecaoM0() {
+    const hoje = paraTexto(new Date());
+    const inicio = hoje.slice(0, 8) + '01';
+    const d = paraData(hoje);
+    const N = ultimoDiaDoMes(d.getFullYear(), d.getMonth());
+    const dias = Array.from({ length: N }, (_, i) => somarDias(inicio, i));
+    const porDia = faturamentoPorDia();
+    const valor = dia => { const v = porDia.get(dia); return v ? v[0] + v[1] : 0; };
+    const ontem = somarDias(hoje, -1);
+    const c = d.getDate() - 1; // dias completos no mês
+    const completos = dias.slice(0, c);
+    const mtd = soma(completos.map(valor));
+    const pesoInicio = pesosSemana(somarDias(inicio, -1), valor);
+    const pesoOntem = pesosSemana(ontem, valor);
+    const pesoDe = (pesos, lista) => soma(lista.map(x => pesos[tipoDia(x)]));
+
+    const metodos = [];
+    const decorrido = pesoDe(pesoInicio, completos);
+    if (decorrido > 0) metodos.push(mtd / decorrido * pesoDe(pesoInicio, dias));
+    const pesoRestante = pesoDe(pesoOntem, dias.slice(c));
+    [28, 7].forEach(n => {
+        const ultimos = Array.from({ length: n }, (_, i) => somarDias(ontem, -i));
+        const base = pesoDe(pesoOntem, ultimos);
+        if (base > 0) metodos.push(mtd + soma(ultimos.map(valor)) / base * pesoRestante);
+    });
+    if (!metodos.length) return null;
+
+    const total = soma(metodos) / metodos.length;
+    const real = [0, 0];
+    dias.slice(0, c + 1).forEach(x => { const v = porDia.get(x); if (v) { real[0] += v[0]; real[1] += v[1]; } });
+    const realizado = real[0] + real[1];
+    const restante = Math.max(0, total - realizado);
+    const futuros = dias.slice(c + 1);
+    const pesosFuturos = futuros.map(x => pesoOntem[tipoDia(x)]);
+    const somaFuturos = soma(pesosFuturos);
+    return {
+        mes: hoje.slice(0, 7), hojeIdx: c, N, real, realizado, total, restante,
+        mix: realizado ? real[1] / realizado : 0, // participação do Full no realizado do mês
+        diario: pesosFuturos.map(pf => (somaFuturos ? restante * pf / somaFuturos : 0)),
+        erro: erroProjecao(c + 1),
+    };
+}
+
+// Parte do restante previsto que cabe nas logísticas marcadas
+const parteProjetada = proj => (logisticas.has(1) ? proj.mix : 0) + (logisticas.has(0) ? 1 - proj.mix : 0);
 
 function renderizarMensal() {
     const area = document.getElementById('graficoMensal');
@@ -349,16 +440,21 @@ function renderizarMensal() {
     });
     if (!porMes.size) { area.innerHTML = '<p class="text-sm text-gray-500 py-6 text-center">Sem vendas guardadas. Use o botão Atualizar.</p>'; return; }
 
+    const proj = projecaoM0();
+    const mesAtual = paraTexto(new Date()).slice(0, 7);
     // Preenche meses sem venda para o eixo não pular
     const meses = [];
-    for (let m = [...porMes.keys()][0] + '-01'; m.slice(0, 7) <= paraTexto(new Date()).slice(0, 7); m = mudarMes(m, 1)) meses.push(m.slice(0, 7));
+    for (let m = [...porMes.keys()][0] + '-01'; m.slice(0, 7) <= mesAtual; m = mudarMes(m, 1)) meses.push(m.slice(0, 7));
+
+    // De baixo para cima: realizado normal, realizado Full, projeção normal, projeção Full
     const series = [
-        { nome: 'Normal', cor: COR_NORMAL, idx: 0 },
-        { nome: 'Full', cor: COR_FULL, idx: 1 },
-    ].filter(s => logisticas.has(s.idx));
-    document.getElementById('legendaMensal').innerHTML = series.length > 1 ? legenda(series.map(s => [s.cor, s.nome])) : '';
-    const valor = (mes, s) => (porMes.get(mes) || [0, 0])[s.idx];
-    const totais = meses.map(m => soma(series.map(s => valor(m, s))));
+        { nome: 'Normal', cor: COR_REAL_NORMAL, full: 0, valor: m => (porMes.get(m) || [0, 0])[0] },
+        { nome: 'Full', cor: COR_REAL_FULL, full: 1, valor: m => (porMes.get(m) || [0, 0])[1] },
+        { nome: 'Projeção normal', cor: COR_PROJ_NORMAL, full: 0, proj: true, valor: m => (proj && m === proj.mes ? proj.restante * (1 - proj.mix) : 0) },
+        { nome: 'Projeção Full', cor: COR_PROJ_FULL, full: 1, proj: true, valor: m => (proj && m === proj.mes ? proj.restante * proj.mix : 0) },
+    ].filter(s => logisticas.has(s.full) && (!s.proj || (proj && proj.restante > 0)));
+    document.getElementById('legendaMensal').innerHTML = legenda(series.map(s => [s.cor, s.nome]));
+    const totais = meses.map(m => soma(series.map(s => s.valor(m))));
 
     const largura = area.clientWidth;
     const margem = { esquerda: 76, direita: 8, topo: 12, baixo: 28 };
@@ -368,67 +464,113 @@ function renderizarMensal() {
     const y = v => margem.topo + alturaUtil - v / topo * alturaUtil;
     const faixa = util / meses.length;
     const barra = Math.min(24, faixa * 0.6);
-    const mesAtual = paraTexto(new Date()).slice(0, 7);
     const pularRotulo = Math.ceil(meses.length / Math.max(1, Math.floor(util / 48)));
 
     const barras = meses.map((mes, i) => {
         const x = margem.esquerda + faixa * i + (faixa - barra) / 2;
+        const valores = series.map(s => s.valor(mes));
+        const ultimo = valores.reduce((u, v, k) => (v > 0 ? k : u), -1);
         let base = 0;
         const partes = series.map((s, k) => {
-            const v = valor(mes, s);
+            const v = valores[k];
             if (v <= 0) return '';
-            const y0 = y(base), y1 = y(base + v);
-            base += v;
-            const ultimo = series.slice(k + 1).every(o => valor(mes, o) <= 0);
             // 2px de respiro entre segmentos; só o segmento do topo tem a ponta arredondada
-            const alto = Math.max(0, y0 - y1 - (base > v ? 2 : 0));
-            const yTopo = y0 - (base > v ? 2 : 0) - alto;
+            const folga = base > 0 ? 2 : 0;
+            const yBase = y(base) - folga, yTopo = y(base + v);
+            base += v;
+            const alto = yBase - yTopo;
             if (alto <= 0) return '';
-            return ultimo
-                ? `<path d="M${x},${yTopo + alto} V${yTopo + Math.min(4, alto)} Q${x},${yTopo} ${x + Math.min(4, barra / 2)},${yTopo} H${x + barra - Math.min(4, barra / 2)} Q${x + barra},${yTopo} ${x + barra},${yTopo + Math.min(4, alto)} V${yTopo + alto} Z" fill="${s.cor}"/>`
+            const r = Math.min(4, alto, barra / 2);
+            return k === ultimo
+                ? `<path d="M${x},${yBase} V${yTopo + r} Q${x},${yTopo} ${x + r},${yTopo} H${x + barra - r} Q${x + barra},${yTopo} ${x + barra},${yTopo + r} V${yBase} Z" fill="${s.cor}"/>`
                 : `<rect x="${x}" y="${yTopo}" width="${barra}" height="${alto}" fill="${s.cor}"/>`;
         }).join('');
         const rotulo = (meses.length - 1 - i) % pularRotulo === 0
-            ? `<text x="${(x + barra / 2).toFixed(1)}" y="${ALTURA_GRAFICO - 8}" text-anchor="middle" fill="${COR_TEXTO_EIXO}" font-size="11">${mesCurto(mes)}${mes === mesAtual ? '*' : ''}</text>` : '';
-        return `<g data-mes="${i}">${partes}</g>${rotulo}
-            <rect data-alvo="${i}" x="${margem.esquerda + faixa * i}" y="${margem.topo}" width="${faixa}" height="${alturaUtil}" fill="transparent"/>`;
+            ? `<text x="${(i === meses.length - 1 ? x + barra + 4 : x + barra / 2).toFixed(1)}" y="${ALTURA_GRAFICO - 8}" text-anchor="${i === meses.length - 1 ? 'end' : 'middle'}" fill="${COR_TEXTO_EIXO}" font-size="11">${mesCurto(mes)}${mes === mesAtual ? '*' : ''}</text>` : '';
+        return `${partes}${rotulo}<rect data-alvo="${i}" x="${margem.esquerda + faixa * i}" y="${margem.topo}" width="${faixa}" height="${alturaUtil}" fill="transparent"/>`;
     }).join('');
 
-    area.innerHTML = `<svg width="${largura}" height="${ALTURA_GRAFICO}" role="img" aria-label="Faturamento por mês, ${mesCurto(meses[0])} a ${mesCurto(meses[meses.length - 1])}" class="block">
+    area.innerHTML = `<svg width="${largura}" height="${ALTURA_GRAFICO}" role="img" aria-label="Faturamento por mês, ${mesCurto(meses[0])} a ${mesCurto(meses[meses.length - 1])}${proj ? ', com a projeção do mês atual' : ''}" class="block">
         ${grade(passos, y, margem.esquerda, largura - margem.direita)}${barras}</svg>
-        <p class="text-xs text-gray-500 mt-1">* mês em andamento</p>`;
+        <p class="text-xs text-gray-500 mt-1">* mês em andamento${proj ? ` · projeção: ${moeda(totais[meses.length - 1])} (± ${pct(proj.erro)}, erro médio histórico neste ponto do mês)` : ''}</p>`;
 
     area.querySelectorAll('[data-alvo]').forEach(alvo => {
         const i = Number(alvo.dataset.alvo);
         alvo.addEventListener('pointermove', e => {
             const mes = meses[i];
-            mostrarDica(e, `<div class="font-semibold mb-1">${mesCurto(mes)}${mes === mesAtual ? ' (parcial)' : ''}</div>`
-                + [...series].reverse().map(s => linhaDica(s.cor, s.nome, moeda(valor(mes, s)))).join('')
-                + (series.length > 1 ? `<div class="flex justify-between gap-4 border-t border-gray-700 mt-1 pt-1"><span>Total</span><span class="tabular-nums">${moeda(totais[i])}</span></div>` : ''));
+            const ehProjecao = proj && mes === proj.mes;
+            const reais = series.filter(s => !s.proj), projetadas = series.filter(s => s.proj);
+            const realizado = soma(reais.map(s => s.valor(mes)));
+            let html = `<div class="font-semibold mb-1">${mesCurto(mes)}${mes === mesAtual ? ' (parcial)' : ''}</div>`
+                + [...reais].reverse().map(s => linhaDica(s.cor, s.nome, moeda(s.valor(mes)))).join('')
+                + `<div class="flex justify-between gap-4 border-t border-gray-700 mt-1 pt-1"><span>${ehProjecao ? 'Realizado' : 'Total'}</span><span class="tabular-nums">${moeda(realizado)}</span></div>`;
+            if (ehProjecao && projetadas.length) {
+                html += `<div class="mt-2"></div>` + [...projetadas].reverse().map(s => linhaDica(s.cor, s.nome, '+ ' + moeda(s.valor(mes)))).join('')
+                    + `<div class="flex justify-between gap-4 border-t border-gray-700 mt-1 pt-1 font-semibold"><span>Projeção do mês</span><span class="tabular-nums">${moeda(totais[i])}</span></div>`
+                    + `<div class="text-xs text-gray-400 mt-1">± ${pct(proj.erro)}: ${moeda(totais[i] * (1 - proj.erro / 100))} a ${moeda(totais[i] * (1 + proj.erro / 100))}</div>`;
+            }
+            mostrarDica(e, html);
         });
         alvo.addEventListener('pointerleave', esconderDica);
     });
 }
 
-function acumulado(resumoPeriodo, { de, ate }, limite) {
-    const porDia = new Map();
-    resumoPeriodo.dias.forEach(d => porDia.set(d[0], (porDia.get(d[0]) || 0) + d[3]));
+// Acumulado dia a dia de `de` até `ate` (null depois de `limite`), nas logísticas marcadas
+function acumuladoDe(porDia, de, ate, limite) {
     const valores = [];
     let total = 0;
-    for (let i = 0, dia = de; dia <= ate; i++, dia = somarDias(dia, 1)) {
+    for (let dia = de; dia <= ate; dia = somarDias(dia, 1)) {
         if (limite && dia > limite) { valores.push(null); continue; }
-        total += porDia.get(dia) || 0;
+        const v = porDia.get(dia);
+        if (v) total += (logisticas.has(0) ? v[0] : 0) + (logisticas.has(1) ? v[1] : 0);
         valores.push(total);
     }
     return valores;
 }
 
-function renderizarAcumulado(p, atual, comp, temBase) {
+const MESES_LONGOS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const mesLongo = t => `${MESES_LONGOS[paraData(t).getMonth()]}/${t.slice(0, 4)}`;
+
+// A comparação aqui ignora os dias úteis: período anterior (ou ano passado) no calendário.
+// Período que começa no dia 1 de um mês vira o mês inteiro, com a comparação também inteira.
+function renderizarAcumulado(p) {
     const area = document.getElementById('graficoAcumulado');
     const hoje = paraTexto(new Date());
-    const series = [{ nome: 'Período atual', cor: COR_ATUAL, valores: acumulado(atual, p.atual, hoje), de: p.atual.de }];
-    if (temBase) series.push({ nome: 'Comparação', cor: COR_COMPARACAO, valores: acumulado(comp, p.comparacao), de: p.comparacao.de, tracejado: true });
-    document.getElementById('legendaAcumulado').innerHTML = series.length > 1 ? legenda(series.map(s => [s.cor, s.nome, true, s.tracejado])) : '';
+    const porDia = faturamentoPorDia();
+    const { de, ate } = p.atual;
+    const mesAlinhado = de.slice(8) === '01' && de.slice(0, 7) === ate.slice(0, 7);
+
+    let fimEixo = ate, compDe = p.calendario.de, compAte = p.calendario.ate, nota;
+    if (mesAlinhado) {
+        const d = paraData(de), c = paraData(compDe);
+        fimEixo = paraTexto(new Date(d.getFullYear(), d.getMonth() + 1, 0));
+        compAte = paraTexto(new Date(c.getFullYear(), c.getMonth() + 1, 0));
+        nota = `Cinza: ${mesLongo(compDe)} inteiro.`;
+    } else {
+        nota = `Cinza: ${dataCurta(compDe)} a ${dataCurta(compAte)}.`;
+    }
+    if (document.getElementById('comparacao').value === 'uteis') nota += ' Aqui a comparação é pelo calendário, sem a regra dos dias úteis.';
+
+    const atual = acumuladoDe(porDia, de, fimEixo, ate < hoje ? ate : hoje);
+    const series = [{ nome: 'Realizado', cor: COR_ATUAL, valores: atual, de }];
+
+    const proj = projecaoM0();
+    if (proj && mesAlinhado && de.slice(0, 7) === proj.mes && ate >= hoje) {
+        const parte = parteProjetada(proj);
+        const valores = atual.map(() => null);
+        let total = atual[proj.hojeIdx];
+        valores[proj.hojeIdx] = total;
+        proj.diario.forEach((v, k) => { total += v * parte; valores[proj.hojeIdx + 1 + k] = total; });
+        if (proj.diario.length) {
+            series.push({ nome: 'Projeção', cor: COR_PROJECAO, valores, de, estilo: 'pontilhado' });
+            nota += ` Roxo: projeção até o fim do mês (± ${pct(proj.erro)}).`;
+        }
+    }
+    const temBase = temDados({ de: compDe });
+    if (temBase) series.push({ nome: 'Comparação', cor: COR_COMPARACAO, valores: acumuladoDe(porDia, compDe, compAte), de: compDe, estilo: 'tracejado' });
+    else nota = 'Sem dados guardados para a comparação.';
+    document.getElementById('legendaAcumulado').innerHTML = series.length > 1 ? legenda(series.map(s => [s.cor, s.nome, true, s.estilo || ''])) : '';
+    document.getElementById('notaAcumulado').textContent = nota;
 
     const tamanho = Math.max(...series.map(s => s.valores.length));
     const largura = area.clientWidth;
@@ -438,28 +580,36 @@ function renderizarAcumulado(p, atual, comp, temBase) {
     const { topo, passos } = escalaY(Math.max(1, ...series.flatMap(s => s.valores.filter(v => v !== null))));
     const x = i => margem.esquerda + (tamanho > 1 ? i / (tamanho - 1) * util : util / 2);
     const y = v => margem.topo + alturaUtil - v / topo * alturaUtil;
+    const ESTILOS = { tracejado: 'stroke-dasharray="5 4"', pontilhado: 'stroke-dasharray="1 5"' };
 
     const linhas = series.map(s => {
-        const pontos = s.valores.map((v, i) => v === null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`).filter(Boolean);
-        return `<polyline points="${pontos.join(' ')}" fill="none" stroke="${s.cor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" ${s.tracejado ? 'stroke-dasharray="5 4"' : ''}/>`;
+        const pontos = s.valores.map((v, i) => (v === null || v === undefined ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`)).filter(Boolean);
+        return `<polyline points="${pontos.join(' ')}" fill="none" stroke="${s.cor}" stroke-width="${s.estilo === 'pontilhado' ? 2.5 : 2}" stroke-linejoin="round" stroke-linecap="round" ${ESTILOS[s.estilo] || ''}/>`;
     }).join('');
-    const fim = s => { for (let i = s.valores.length - 1; i >= 0; i--) if (s.valores[i] !== null) return i; return -1; };
+    const fim = s => { for (let i = s.valores.length - 1; i >= 0; i--) if (s.valores[i] !== null && s.valores[i] !== undefined) return i; return -1; };
     const rotulo = (px, py, texto, ancora) => `<text x="${px.toFixed(1)}" y="${py.toFixed(1)}" text-anchor="${ancora}" fill="${COR_TEXTO_ROTULO}" font-size="11" stroke="${COR_FUNDO}" stroke-width="3" style="font-variant-numeric:tabular-nums;paint-order:stroke">${esc(texto)}</text>`;
-    const finais = series.map((s, k) => {
-        const i = fim(s);
-        if (i < 0) return '';
-        // Rótulo do atual acima do ponto, da comparação abaixo, para não se cruzarem
-        const outro = series[1 - k];
-        const acima = !outro || s.valores[i] >= (outro.valores[Math.min(i, outro.valores.length - 1)] ?? 0);
+    // Rótulos nas pontas: do mais alto para o mais baixo, empurrando para baixo quando colidem
+    const pontas = series.map(s => ({ s, i: fim(s) })).filter(c => c.i >= 0)
+        .filter(c => !(c.s.nome === 'Realizado' && series.some(o => o.nome === 'Projeção'))) // o realizado continua na projeção
+        .sort((a, b) => b.s.valores[b.i] - a.s.valores[a.i]);
+    let ultimoY = -Infinity;
+    const finais = pontas.map(({ s, i }) => {
+        const py = Math.max(y(s.valores[i]) - 10, ultimoY + 14);
+        ultimoY = py;
+        const ancora = i > tamanho / 2 ? 'end' : 'start';
         return `<circle cx="${x(i).toFixed(1)}" cy="${y(s.valores[i]).toFixed(1)}" r="4" fill="${s.cor}" stroke="${COR_FUNDO}" stroke-width="2"/>`
-            + rotulo(x(i) - (i > tamanho / 2 ? 6 : -6), y(s.valores[i]) + (acima ? -10 : 18), moedaCurta(s.valores[i]), i > tamanho / 2 ? 'end' : 'start');
+            + rotulo(x(i) + (ancora === 'end' ? -8 : 8), py, moedaCurta(s.valores[i]), ancora);
     }).join('');
-    const pular = Math.ceil(tamanho / Math.max(1, Math.floor(util / 56)));
-    const eixo = Array.from({ length: tamanho }, (_, i) => i).filter(i => (tamanho - 1 - i) % pular === 0)
-        .map(i => `<text x="${x(i).toFixed(1)}" y="${ALTURA_GRAFICO - 8}" text-anchor="${i === 0 && tamanho > 1 ? 'start' : i === tamanho - 1 && tamanho > 1 ? 'end' : 'middle'}" fill="${COR_TEXTO_EIXO}" font-size="11">${dataCurta(somarDias(p.atual.de, i)).slice(0, 5)}</text>`).join('');
+    const marcaHoje = series.some(s => s.nome === 'Projeção') && proj
+        ? `<circle cx="${x(proj.hojeIdx).toFixed(1)}" cy="${y(atual[proj.hojeIdx]).toFixed(1)}" r="4" fill="${COR_ATUAL}" stroke="${COR_FUNDO}" stroke-width="2"/>` : '';
+    const rotuloX = i => (mesAlinhado ? String(i + 1) : dataCurta(somarDias(de, i)).slice(0, 5));
+    const pular = Math.ceil(tamanho / Math.max(1, Math.floor(util / (mesAlinhado ? 30 : 56))));
+    const eixo = Array.from({ length: tamanho }, (_, i) => i).filter(i => i % pular === 0 || i === tamanho - 1)
+        .filter(i => i === tamanho - 1 || tamanho - 1 - i >= pular / 2)
+        .map(i => `<text x="${x(i).toFixed(1)}" y="${ALTURA_GRAFICO - 8}" text-anchor="${i === 0 && tamanho > 1 ? 'start' : i === tamanho - 1 && tamanho > 1 ? 'end' : 'middle'}" fill="${COR_TEXTO_EIXO}" font-size="11">${rotuloX(i)}</text>`).join('');
 
-    area.innerHTML = `<svg width="${largura}" height="${ALTURA_GRAFICO}" role="img" aria-label="Faturamento acumulado dia a dia no período${temBase ? ' e na comparação' : ''}" class="block" style="touch-action:pan-y">
-        ${grade(passos, y, margem.esquerda, largura - margem.direita)}${linhas}${finais}${eixo}
+    area.innerHTML = `<svg width="${largura}" height="${ALTURA_GRAFICO}" role="img" aria-label="Faturamento acumulado dia a dia${series.length > 1 ? ', com ' + series.slice(1).map(s => s.nome.toLowerCase()).join(' e ') : ''}" class="block" style="touch-action:pan-y">
+        ${grade(passos, y, margem.esquerda, largura - margem.direita)}${linhas}${marcaHoje}${finais}${eixo}
         <g data-marcador class="hidden"><line data-mira y1="${margem.topo}" y2="${margem.topo + alturaUtil}" stroke="${COR_TEXTO_EIXO}" stroke-width="1"/>
             ${series.map((s, k) => `<circle data-ponto="${k}" r="4" fill="${s.cor}" stroke="${COR_FUNDO}" stroke-width="2"/>`).join('')}</g>
         <rect data-alvo x="${margem.esquerda - 10}" y="0" width="${util + 20}" height="${ALTURA_GRAFICO - margem.baixo}" fill="transparent"/></svg>`;
@@ -472,17 +622,13 @@ function renderizarAcumulado(p, atual, comp, temBase) {
         marcador.classList.remove('hidden');
         const mira = marcador.querySelector('[data-mira]');
         mira.setAttribute('x1', x(i)); mira.setAttribute('x2', x(i));
+        const visivel = s => s.valores[i] !== null && s.valores[i] !== undefined;
         series.forEach((s, k) => {
             const ponto = marcador.querySelector(`[data-ponto="${k}"]`);
-            const v = s.valores[i];
-            ponto.classList.toggle('hidden', v === null || v === undefined);
-            if (v !== null && v !== undefined) { ponto.setAttribute('cx', x(i)); ponto.setAttribute('cy', y(v)); }
+            ponto.classList.toggle('hidden', !visivel(s));
+            if (visivel(s)) { ponto.setAttribute('cx', x(i)); ponto.setAttribute('cy', y(s.valores[i])); }
         });
-        mostrarDica(e, series.map(s => {
-            const v = s.valores[i];
-            const dia = somarDias(s.de, i);
-            return linhaDica(s.cor, `${s.nome} · ${dataCurta(dia).slice(0, 5)}`, v === null || v === undefined ? '—' : moeda(v));
-        }).join(''));
+        mostrarDica(e, series.filter(visivel).map(s => linhaDica(s.cor, `${s.nome} · ${dataCurta(somarDias(s.de, i)).slice(0, 5)}`, moeda(s.valores[i]))).join('') || '<span class="text-gray-400">Sem dados neste dia</span>');
     });
     svg.addEventListener('pointerleave', () => { marcador.classList.add('hidden'); esconderDica(); });
 }
