@@ -16,6 +16,7 @@ services:
       - ./src:/var/www/html/src:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker:ro
+      - ../ml-jrf/data:/ml-jrf:ro # token do ML (só o ml-jrf renova)
       - dados:/var/lib/ml-app
     restart: unless-stopped
 

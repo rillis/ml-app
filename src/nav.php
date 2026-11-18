@@ -2,6 +2,7 @@
 // [ícone, nome]: no celular só o nome aparece, para o menu caber em uma linha
 $modulos = [
     '/dash/'    => ['📱', 'Dash'],
+    '/vendas/'  => ['💰', 'Vendas'],
     '/boletos/' => ['📑', 'Boletos'],
     '/estoque/' => ['📦', 'Estoque'],
     '/contas/'  => ['💳', 'Contas'],
