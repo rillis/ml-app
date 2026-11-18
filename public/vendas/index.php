@@ -74,19 +74,19 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
 
         <section class="<?= $classeCartao ?>">
             <div class="flex flex-wrap justify-between items-baseline gap-2 mb-4">
-                <h2 class="text-lg font-semibold text-gray-200">Faturamento por mês</h2>
-                <div id="legendaMensal" class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-300"></div>
-            </div>
-            <div id="graficoMensal" class="relative"></div>
-        </section>
-
-        <section class="<?= $classeCartao ?>">
-            <div class="flex flex-wrap justify-between items-baseline gap-2 mb-4">
                 <h2 class="text-lg font-semibold text-gray-200">Faturamento acumulado no período</h2>
                 <div id="legendaAcumulado" class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-300"></div>
             </div>
             <div id="graficoAcumulado" class="relative"></div>
             <p id="notaAcumulado" class="text-xs text-gray-500 mt-1"></p>
+        </section>
+
+        <section class="<?= $classeCartao ?>">
+            <div class="flex flex-wrap justify-between items-baseline gap-2 mb-4">
+                <h2 class="text-lg font-semibold text-gray-200">Faturamento por mês</h2>
+                <div id="legendaMensal" class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-300"></div>
+            </div>
+            <div id="graficoMensal" class="relative"></div>
         </section>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
