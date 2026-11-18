@@ -3,6 +3,7 @@
 $modulos = [
     '/dash/'    => ['📱', 'Dash'],
     '/vendas/'  => ['💰', 'Vendas'],
+    '/full/'    => ['🚚', 'Full'],
     '/boletos/' => ['📑', 'Boletos'],
     '/estoque/' => ['📦', 'Estoque'],
     '/contas/'  => ['💳', 'Contas'],

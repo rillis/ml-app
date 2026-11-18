@@ -1136,6 +1136,7 @@ async function atualizar() {
                resposta.alterados && `${inteiro(resposta.alterados)} alterado${resposta.alterados > 1 ? 's' : ''}`].filter(Boolean).join(' e ')
             : 'Nada mudou desde a última atualização';
         ML.toast(`${detalhe} (${inteiro(resposta.lidos)} conferidos em ${String(resposta.segundos).replace('.', ',')} s)`, mudancas ? 'sucesso' : 'info');
+        if (resposta.full && resposta.full.erro) ML.toast('Estoque Full não atualizou: ' + resposta.full.erro, 'aviso');
         await carregar();
     } catch (e) {
         ML.toast(e.message, 'erro');

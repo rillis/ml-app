@@ -3,6 +3,7 @@
 // Banco vazio: carga a partir de VENDAS_INICIO. Depois: só o que mudou no ML desde a última cópia
 // (order.date_last_updated), o que traz as vendas novas e as antigas que foram canceladas ou mudaram.
 // Pela linha de comando: docker exec ml-app php /var/www/html/src/vendas/sync.php [--carga]
+// (pela linha de comando também atualiza o estoque Full, em full.php)
 
 require_once __DIR__ . '/../db.php';
 
@@ -265,7 +266,16 @@ function vendas_sincronizar(PDO $pdo, bool $carga = false): array
 
 if (PHP_SAPI === 'cli' && realpath($_SERVER['argv'][0] ?? '') === __FILE__) {
     try {
-        echo json_encode(vendas_sincronizar(ml_db('ml_vendas'), in_array('--carga', $_SERVER['argv'], true)), JSON_UNESCAPED_UNICODE), "\n";
+        require_once __DIR__ . '/full.php';
+        $pdo = ml_db('ml_vendas');
+        $resultado = vendas_sincronizar($pdo, in_array('--carga', $_SERVER['argv'], true));
+        // Estoque Full na mesma rodada (aba Full). Falha aqui não desfaz a cópia das vendas.
+        try {
+            $resultado['full'] = vendas_sincronizar_full($pdo, (string) vendas_get('/users/me')['id']);
+        } catch (Throwable $e) {
+            $resultado['full'] = ['erro' => $e->getMessage()];
+        }
+        echo json_encode($resultado, JSON_UNESCAPED_UNICODE), "\n";
     } catch (Throwable $e) {
         fwrite(STDERR, 'Erro: ' . $e->getMessage() . "\n");
         exit(1);

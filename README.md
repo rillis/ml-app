@@ -12,6 +12,7 @@ PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`
 | `/dash/fila/` | Fila do webhook do ml-jrf: pendentes, falhas, botões de reprocessar e descartar | `ml_jrf.webhook_queue` |
 | `/boletos/` | Cadastro de boletos (com leitura de PDF via pdf.js), vencimento ajustado a feriados, insights | `ml_boletos` |
 | `/vendas/` | Vendas do ML copiadas para o banco: comparativo entre períodos (datas livres, padrão mês até hoje; contra o período anterior, o período anterior em dias úteis ou o mesmo período do ano passado), faturamento por mês (Full × normal), acumulado do período, Premium × Clássico, faturamento por dia da semana, cancelamentos por mês e tabela por SKU. Canceladas ficam fora das outras visões | `ml_vendas` (esquema em `sql/ml_vendas.sql`) |
+| `/full/` | Estoque dos anúncios no Full e sugestão de envio: quando criar o próximo envio e quanto mandar de cada anúncio, pelo ciclo escolhido | `ml_vendas` (tabelas `full_*`), `ml_estoque` |
 | `/estoque/` | Estoque local por SKU, com histórico (a lista de SKUs vem de `src/estoque/sku.csv`) | `ml_estoque` |
 | `/contas/` | Contas pessoais mensais, leitura de fatura de cartão em PDF, parcelas e insights | `contas_pessoais` (esquema em `sql/contas_pessoais.sql`) |
 | `/home/resumo.php` | JSON para os cards da home (home.rillis.com.br): boletos em aberto por nível e se o mês atual das contas foi salvo | `ml_boletos`, `contas_pessoais` |
@@ -44,6 +45,25 @@ Criar o banco:
 
 ```bash
 mysql < sql/ml_vendas.sql
+```
+
+## Full (`/full/`)
+
+O Atualizar (o mesmo de Vendas) também busca todos os anúncios Full, ativos e pausados, e o estoque de cada um no ML (`/inventories/{id}/stock/fulfillment`). Anúncios que dividem o mesmo estoque (mesmo `inventory_id`) viram uma linha só. Cada atualização também grava uma foto do estoque do dia em `full_estoque_dia`.
+
+Sugestão por anúncio, com os parâmetros da tela (ciclo, prazo e segurança, guardados no navegador):
+
+- **Venda por dia:** a maior média entre os últimos 30 e 60 dias completos, só das vendas pelo Full.
+- **Enviar até:** o dia em que o estoque entra na margem (prazo + segurança).
+- **Entra no envio de hoje:** quem não aguenta até o próximo envio (um ciclo). A quantidade cobre prazo + ciclo + segurança.
+- **Local:** estoque do módulo Estoque pelo SKU, para saber se dá para mandar.
+
+Unidades já enviadas que o ML ainda não recebeu não aparecem na API, então não entram na conta.
+
+Criar as tabelas em um banco que já existe:
+
+```bash
+mysql < sql/migracoes/2026-11-17-full-estoque.sql
 ```
 
 ## Níveis de alerta dos boletos
