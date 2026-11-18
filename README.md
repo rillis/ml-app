@@ -34,7 +34,7 @@ No gráfico de acumulado, a comparação usa sempre o calendário, mesmo com dia
 
 Full ou normal vem de `order_items[].stock.node_id`: armazém do ML (`BRSP02`, `BRSP04`...) é Full. Pedidos de antes de 2026-07 não trazem esse campo; para eles a cópia consulta o envio (`/shipments`).
 
-**Anúncios que não existem mais:** uma vez por dia, o Atualizar lista todos os anúncios do vendedor (`/users/{id}/items/search`, que só devolve os que existem). Anúncio que vendeu e não está na lista foi encerrado ou apagado. Para cada um, busca os anúncios de hoje com o mesmo SKU (`seller_sku`) e guarda tipo (Clássico/Premium), Full ou normal e status em `anuncios_extintos`. A tabela no fim da página usa o histórico todo, sem os filtros. Para refazer no mesmo dia: `docker exec ml-app php /var/www/html/src/vendas/sync.php --extintos`.
+**Anúncios que não existem mais:** uma vez por dia, o Atualizar lista todos os anúncios do vendedor (`/users/{id}/items/search`, que só devolve os que existem). Anúncio que vendeu e não está na lista foi encerrado ou apagado. Para cada um, busca os anúncios de hoje com o mesmo SKU (`seller_sku`) e guarda tipo (Clássico/Premium), Full ou normal e status em `anuncios_extintos`. A tabela no fim da página usa o histórico todo, sem os filtros, e esconde quem tem substituto: anúncio ativo com o mesmo SKU e o mesmo tipo (Full ou normal não importa). Para refazer no mesmo dia: `docker exec ml-app php /var/www/html/src/vendas/sync.php --extintos`.
 
 Carga completa pela linha de comando (refaz tudo desde `VENDAS_INICIO`, sem apagar nada):
 

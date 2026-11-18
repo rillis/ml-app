@@ -153,7 +153,7 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
 
         <section class="<?= $classeCartao ?>">
             <h2 class="text-lg font-semibold text-gray-200">Anúncios que não existem mais</h2>
-            <p class="text-sm text-gray-400 mb-4">Anúncios encerrados ou apagados que tiveram vendas, no histórico todo (não segue o filtro de período), e os anúncios de hoje com o mesmo SKU.</p>
+            <p class="text-sm text-gray-400 mb-4">Anúncios encerrados ou apagados que tiveram vendas, no histórico todo (não segue o filtro de período), e os anúncios de hoje com o mesmo SKU. Quem já tem substituto ativo do mesmo tipo (Clássico ou Premium) não aparece.</p>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead class="text-gray-400 border-b border-gray-700">
@@ -1138,7 +1138,8 @@ async function copiarCodigo(codigo) {
 }
 
 function renderizarExtintos() {
-    const linhas = dados.extintos || [];
+    // Tem substituto (sai da lista): anúncio ativo de hoje com o mesmo SKU e o mesmo tipo. Full ou normal não importa.
+    const linhas = (dados.extintos || []).filter(l => !l.equivalentes.some(e => e.status === 'active' && l.tipos.includes(e.tipo)));
     document.getElementById('tabelaExtintos').innerHTML = linhas.length ? linhas.map(l => {
         const logistica = l.unidadesFull === 0 ? 'normal' : l.unidadesFull === l.unidades ? 'Full' : `Full ${pct(l.unidadesFull / l.unidades * 100)}`;
         const equivalentes = !l.sku ? '<span class="text-gray-500">sem SKU para comparar</span>'
@@ -1164,7 +1165,7 @@ function renderizarExtintos() {
             <td class="hidden sm:table-cell py-2 px-3 text-right tabular-nums whitespace-nowrap">${dataCurta(l.ultima)}</td>
             <td class="py-2 pl-1.5 sm:pl-3">${equivalentes}</td>
         </tr>`;
-    }).join('') : '<tr><td colspan="5" class="py-6 text-center text-gray-500">Nenhum anúncio com vendas foi encerrado. A conferência roda uma vez por dia, no Atualizar.</td></tr>';
+    }).join('') : '<tr><td colspan="5" class="py-6 text-center text-gray-500">Nenhum anúncio encerrado sem substituto. A conferência roda uma vez por dia, no Atualizar.</td></tr>';
 }
 
 function mostrarSincronizacao() {
