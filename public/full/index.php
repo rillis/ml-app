@@ -223,7 +223,7 @@ function renderizar() {
                     ${l.principal || l.situacao === 'parar' || l.situacao === 'normal' ? `<span class="text-[11px] px-1.5 py-0.5 rounded border ${classe} whitespace-nowrap">${rotulo}</span>` : ''}
                     ${l.ativo ? '' : '<span class="text-[11px] px-1.5 py-0.5 rounded border border-gray-600 text-gray-400 whitespace-nowrap">pausado</span>'}
                 </div>
-                <div class="text-xs truncate sm:max-w-md"><a href="${link}" target="_blank" rel="noopener" class="text-blue-400 hover:underline tabular-nums">${esc(l.anuncio)}</a><span class="text-gray-500" title="${esc(l.titulo)}"> · ${esc(l.titulo)}</span></div>
+                <div class="text-xs truncate sm:max-w-md"><button type="button" onclick="copiarCodigo('${esc(l.anuncio)}')" title="Copiar código do anúncio" class="text-blue-400 hover:text-blue-300 tabular-nums cursor-copy">${esc(l.anuncio)}</button><a href="${link}" target="_blank" rel="noopener" title="Abrir anúncio em nova guia" aria-label="Abrir anúncio ${esc(l.anuncio)} em nova guia" class="inline-block ml-1 px-0.5 text-gray-400 hover:text-blue-300">↗</a><span class="text-gray-500" title="${esc(l.titulo)}"> · ${esc(l.titulo)}</span></div>
                 ${dividido}
                 ${emOutro(l) > 0 ? `<div class="text-xs text-sky-300">outro anúncio deste SKU tem ${emOutro(l)} no Full</div>` : ''}
             </td>
@@ -235,6 +235,15 @@ function renderizar() {
             <td class="py-2 pl-2 sm:pl-3 text-right tabular-nums font-semibold ${l.noEnvio ? 'text-white' : 'text-gray-500'}">${enviar}</td>
         </tr>`;
     }).join('') : '<tr><td colspan="7" class="py-6 text-center text-gray-500">Nenhum anúncio no Full. Use o botão Atualizar.</td></tr>';
+}
+
+async function copiarCodigo(codigo) {
+    try {
+        await navigator.clipboard.writeText(codigo);
+        ML.toast(`${codigo} copiado.`, 'sucesso');
+    } catch (e) {
+        ML.toast('Não foi possível copiar.', 'erro');
+    }
 }
 
 // Por anúncio: "MLB... - 2x". Por SKU: abre os kits (SKUs separados por +) e soma tudo: "KF-133 - 6x".
