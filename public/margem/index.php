@@ -111,6 +111,17 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
                         <option value="paused">Pausados</option>
                         <option value="outros">Outros</option>
                     </select>
+                    <select id="tipoMargem" class="<?= $classeCampo ?>">
+                        <option value="">Clássico e Premium</option>
+                        <option value="Clássico">Clássico</option>
+                        <option value="Premium">Premium</option>
+                    </select>
+                    <!-- some enquanto a busca não tiver o tipo de envio (buscas de antes dessa coluna) -->
+                    <select id="envioMargem" class="<?= $classeCampo ?> hidden">
+                        <option value="">Full e normal</option>
+                        <option value="Full">Full</option>
+                        <option value="Normal">Normal</option>
+                    </select>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm">
@@ -122,7 +133,8 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
                                 <th class="text-right <?= $classeTh ?> hidden md:table-cell" data-ordem="custo_desc" title="Custo do fornecedor com desconto">Custo</th>
                                 <th class="text-right <?= $classeTh ?> hidden sm:table-cell" data-ordem="lucro">Lucro</th>
                                 <th class="text-right <?= $classeTh ?>" data-ordem="margem">Margem</th>
-                                <th class="text-right <?= $classeTh ?> pr-0" data-ordem="diferenca" title="Preço que dá a margem alvo e a diferença para o preço atual">Sugerido</th>
+                                <th class="text-right <?= $classeTh ?>" data-ordem="diferenca" title="Preço que dá a margem alvo e a diferença para o preço atual">Sugerido</th>
+                                <th class="text-center <?= $classeTh ?> pr-0" data-ordem="dmeta" title="Distância da margem até a meta, em pontos percentuais (para mais ou para menos)">Δ meta</th>
                             </tr>
                         </thead>
                         <tbody id="tabelaMargem"></tbody>

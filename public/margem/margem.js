@@ -20,7 +20,7 @@ const STATUS = { active: 'ativo', paused: 'pausado', closed: 'encerrado', under_
 let estado = null;          // /api/estado
 let margem = null;          // última planilha de custo (json)
 let skus = null;            // último comparador (json)
-let ordem = { campo: 'margem', dir: 1 };
+let ordem = { campo: 'dmeta', dir: -1 };  // padrão: mais longe da meta primeiro
 let mostrarTodosMargem = false;
 let pollJob = null;
 let jobRodando = false;
@@ -205,6 +205,8 @@ async function carregarMargem() {
             l.situacao = situacao(l);
             // o "Você recebe" do ML: preço menos a taxa, o frete (frete grátis) e o adicional (sem frete grátis)
             l.recebe = Math.round((l.preco * (1 - l.taxa) - l.frete - l.adc) * 100) / 100;
+            // distância da margem até a meta, em valor absoluto (vazio sem custo ou só com itens grátis)
+            l.dmeta = l.margem == null || l.situacao === 'sem' || l.situacao === 'gratis' ? null : Math.abs(l.margem - margem.meta);
         });
     }
     renderMargem();
@@ -216,10 +218,13 @@ function renderMargem() {
         sub.textContent = 'Nenhuma planilha de margem ainda.';
         $('#infoColeta').textContent = 'Use Atualizar margens para buscar os anúncios no ML.';
         $('#resumoMargem').innerHTML = '';
-        $('#tabelaMargem').innerHTML = '<tr><td colspan="7" class="py-6 text-center text-gray-500">Nenhuma planilha ainda.</td></tr>';
+        $('#tabelaMargem').innerHTML = '<tr><td colspan="8" class="py-6 text-center text-gray-500">Nenhuma planilha ainda.</td></tr>';
         $('#baixarMargem').classList.add('hidden');
         return;
     }
+    // filtros de tipo e envio só aparecem quando a planilha tem a informação
+    $('#tipoMargem').classList.toggle('hidden', !margem.linhas.some(l => l.tipo));
+    $('#envioMargem').classList.toggle('hidden', !margem.linhas.some(l => l.envio));
     sub.textContent = `Planilha de ${quando(margem.gerado)} · busca no ML de ${quando(margem.coleta_data)}`;
     $('#infoColeta').innerHTML = `Busca no ML de <strong class="text-gray-200">${quando(margem.coleta_data)}</strong> · ${margem.linhas.length.toLocaleString('pt-BR')} anúncios`
         + (margem.meta !== estado?.meta || (margem.imposto || 0) !== (estado?.partes.imposto || 0) ? ' · <span class="text-amber-300">margem alvo mudou: recalcule</span>' : '');
@@ -243,7 +248,10 @@ function linhasFiltradas() {
     const busca = $('#buscaMargem').value.trim().toUpperCase();
     const marcadas = new Set($$('#opcoesMargem input:checked').map(c => c.value));
     const status = $('#statusMargem').value;
+    const tipo = $('#tipoMargem').value;
+    const envio = $('#envioMargem').value;
     const lista = margem.linhas.filter(l =>
+        (!tipo || l.tipo === tipo) && (!envio || l.envio === envio) &&
         (!busca || `${l.codigo} ${l.sku} ${l.titulo}`.toUpperCase().includes(busca))
         && marcadas.has(l.situacao)
         && (!status || (status === 'outros' ? !['active', 'paused'].includes(l.status) : l.status === status)));
@@ -256,6 +264,16 @@ function linhasFiltradas() {
         return (typeof x === 'string' ? x.localeCompare(y, 'pt-BR') : x - y) * dir;
     });
 }
+
+// Etiquetas do anúncio: tipo (Clássico/Premium) e envio (Full/Normal)
+const COR_TIPO = { 'Premium': 'border-violet-500/50 text-violet-200 bg-violet-900/30', 'Clássico': 'border-sky-600/50 text-sky-200 bg-sky-900/20' };
+const COR_ENVIO = { 'Full': 'border-emerald-500/50 text-emerald-200 bg-emerald-900/30', 'Normal': 'border-gray-600 text-gray-300' };
+const etiquetas = l => (l.tipo ? pilula(l.tipo, COR_TIPO[l.tipo] || 'border-gray-600 text-gray-400') : '')
+    + (l.envio ? pilula(l.envio === 'Full' ? '⚡ Full' : 'Normal', COR_ENVIO[l.envio] || 'border-gray-600 text-gray-400') : '');
+
+// Diferença para a meta em pontos percentuais: 0,35 pp
+const pp = n => (n * 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' pp';
+const COR_DMETA = { abaixo: 'text-red-300', na: 'text-gray-400', acima: 'text-amber-300' };
 
 const COR_MARGEM = {
     abaixo: 'bg-red-900/60 text-red-200 border-red-500/40',
@@ -291,7 +309,7 @@ function renderTabelaMargem() {
         return `<tr class="border-t border-gray-700/60 align-top">
             <td class="py-2 pr-2 sm:pr-3 max-w-[11rem] sm:max-w-sm">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>${status}
+                    <span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>${etiquetas(l)}${status}
                 </div>
                 <div class="text-xs truncate">${codigoAnuncio(l.codigo)}<span class="text-gray-500" title="${esc(l.titulo)}"> · ${esc(l.titulo)}</span></div>
                 ${l.situacao === 'sem' ? `<div class="text-xs text-red-300">${esc(l.como)}</div>` : ''}
@@ -301,9 +319,10 @@ function renderTabelaMargem() {
             <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap hidden md:table-cell" title="Sem desconto: ${brl(l.custo)}">${brl(l.custo_desc)}</td>
             <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap hidden sm:table-cell ${l.lucro < 0 ? 'text-red-300' : ''}" title="Você recebe ${brl(l.recebe)} − custo ${brl(l.custo_desc)} = ${brl(l.lucro)}. Depois do imposto (${brl(l.imposto || 0)}): ${brl(l.lucro_liquido ?? l.lucro)}">${brl(l.lucro)}</td>
             <td class="py-2 px-2 sm:px-3 text-right">${margemCel}</td>
-            <td class="py-2 pl-2 sm:pl-3 text-right tabular-nums whitespace-nowrap">${l.preco_sugerido == null ? '—' : brl(l.preco_sugerido)}${diferenca(l.diferenca, l.preco)}</td>
+            <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap">${l.preco_sugerido == null ? '—' : brl(l.preco_sugerido)}${diferenca(l.diferenca, l.preco)}</td>
+            <td class="py-2 pl-2 sm:pl-3 text-center tabular-nums whitespace-nowrap ${COR_DMETA[l.situacao] || 'text-gray-500'}" title="${l.dmeta == null ? '' : `Margem ${pct(l.margem, 2)} ${l.margem < margem.meta ? 'abaixo' : 'acima'} da meta ${pctMeta(margem.meta)}`}">${l.dmeta == null ? '—' : pp(l.dmeta)}</td>
         </tr>`;
-    }).join('') : '<tr><td colspan="7" class="py-6 text-center text-gray-500">Nenhum anúncio com esses filtros.</td></tr>';
+    }).join('') : '<tr><td colspan="8" class="py-6 text-center text-gray-500">Nenhum anúncio com esses filtros.</td></tr>';
 }
 
 async function carregarTeste() {
@@ -611,7 +630,7 @@ function ligarEventos() {
         }
     });
 
-    ['#buscaMargem', '#filtroMargem', '#statusMargem'].forEach(s => $(s).addEventListener('input', () => { mostrarTodosMargem = false; renderTabelaMargem(); }));
+    ['#buscaMargem', '#filtroMargem', '#statusMargem', '#tipoMargem', '#envioMargem'].forEach(s => $(s).addEventListener('input', () => { mostrarTodosMargem = false; renderTabelaMargem(); }));
     ligarFiltroMargem();
     $('#btnMaisMargem').addEventListener('click', () => { mostrarTodosMargem = true; renderTabelaMargem(); });
     $$('th[data-ordem]').forEach(th => th.addEventListener('click', () => {
