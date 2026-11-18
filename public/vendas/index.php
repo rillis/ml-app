@@ -96,7 +96,7 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
             </div>
             <p class="text-xs text-gray-500 mb-4">Mês atual inteiro, Full e normal, sem os filtros acima. Cada linha roxa é a projeção feita na manhã de um dia, com os dias completos até a véspera; a mais forte é a de hoje.</p>
             <div id="graficoEvolucao" class="relative"></div>
-            <h3 class="text-sm font-semibold text-gray-300 mt-6 mb-2">Fechamento projetado em cada dia</h3>
+            <h3 class="text-sm font-semibold text-gray-300 mt-6 mb-2">Fechamento projetado com os dados até cada dia</h3>
             <div id="graficoFechamentos" class="relative"></div>
         </section>
 
@@ -797,19 +797,20 @@ function renderizarEvolucao() {
     // --- Fechamento projetado em cada dia ---
     const larguraF = areaFech.clientWidth;
     const alturaF = 170;
-    const mF = { esquerda: 76, direita: 16, topo: 16, baixo: 26 };
+    const mF = { esquerda: margem.esquerda, direita: margem.direita, topo: 16, baixo: 26 };
     const utilF = larguraF - mF.esquerda - mF.direita;
     const altUtilF = alturaF - mF.topo - mF.baixo;
     const valoresF = projecoes.map(p => p.total);
     const minF = Math.min(...valoresF, anterior[Nant]), maxF = Math.max(...valoresF, anterior[Nant]);
     const folgaF = (maxF - minF) * 0.15 || maxF * 0.1 || 1;
     const baseF = Math.max(0, minF - folgaF), topoF = maxF + folgaF;
-    const xF = r => mF.esquerda + (N > 1 ? (r - 1) / (N - 1) * utilF : utilF / 2);
+    // Mesma escala do gráfico de cima: a projeção da manhã do dia r fica em j = r - 1 (fim do dia anterior)
+    const xF = r => mF.esquerda + (r - 1) / (tamanho - 1) * utilF;
     const yF = v => mF.topo + altUtilF - (v - baseF) / (topoF - baseF) * altUtilF;
     const refY = yF(anterior[Nant]);
     const pontosF = projecoes.map(p => `<circle data-ponto-r="${p.r}" cx="${xF(p.r).toFixed(1)}" cy="${yF(p.total).toFixed(1)}" r="${p === ultima ? 4.5 : 3}" fill="${COR_PROJECAO}" stroke="${COR_FUNDO}" stroke-width="1.5"/>`).join('');
-    const eixoF = Array.from({ length: N }, (_, k) => k + 1).filter(r => r === 1 || r % pular === 0)
-        .map(r => `<text x="${xF(r).toFixed(1)}" y="${alturaF - 6}" text-anchor="middle" fill="${COR_TEXTO_EIXO}" font-size="11">${r}</text>`).join('');
+    const eixoF = Array.from({ length: tamanho }, (_, j) => j).filter(j => j > 0 && (j % pular === 0 || j === 1))
+        .map(j => `<text x="${xF(j + 1).toFixed(1)}" y="${alturaF - 6}" text-anchor="middle" fill="${COR_TEXTO_EIXO}" font-size="11">${j}</text>`).join('');
     const marcasF = [baseF + (topoF - baseF) * 0.15, (baseF + topoF) / 2, topoF - (topoF - baseF) * 0.15];
     areaFech.innerHTML = `<svg width="${larguraF}" height="${alturaF}" role="img" aria-label="Fechamento do mês projetado em cada dia" class="block">
         ${marcasF.map(v => `<line x1="${mF.esquerda}" x2="${larguraF - mF.direita}" y1="${yF(v).toFixed(1)}" y2="${yF(v).toFixed(1)}" stroke="${COR_GRADE}"/><text x="${mF.esquerda - 8}" y="${(yF(v) + 4).toFixed(1)}" text-anchor="end" fill="${COR_TEXTO_EIXO}" font-size="11">${moedaCurta(v)}</text>`).join('')}
@@ -834,7 +835,10 @@ function renderizarEvolucao() {
         const mira = marcador.querySelector('[data-mira]');
         mira.setAttribute('x1', x(r - 1)); mira.setAttribute('x2', x(r - 1));
         const dia = somarDias(inicio, r - 1);
-        mostrarDica(e, `<div class="font-semibold mb-1">Projeção da manhã de ${dataCurta(dia).slice(0, 5)}</div>`
+        const titulo = r > 1
+            ? `Projeção com dados até ${dataCurta(somarDias(dia, -1)).slice(0, 5)} <span class="font-normal text-gray-400">(manhã de ${dataCurta(dia).slice(0, 5)})</span>`
+            : `Projeção da manhã de ${dataCurta(dia).slice(0, 5)} <span class="font-normal text-gray-400">(sem dias completos)</span>`;
+        mostrarDica(e, `<div class="font-semibold mb-1">${titulo}</div>`
             + (p ? linhaDica(COR_PROJECAO, 'Fechamento projetado', moeda(p.total)) : '<div class="text-gray-400">Sem projeção neste dia</div>')
             + linhaDica(COR_ATUAL, `Realizado até ${dataCurta(somarDias(dia, -1)).slice(0, 5)}`, moeda(realizado[r - 1]))
             + linhaDica(COR_COMPARACAO, `${mesLongo(inicioAnt)} até o dia ${r - 1}`, r - 1 <= Nant ? moeda(anterior[r - 1]) : '—')
@@ -859,7 +863,7 @@ function renderizarEvolucao() {
     const svgF = areaFech.querySelector('svg');
     svgF.querySelector('[data-alvo]').addEventListener('pointermove', e => {
         const rel = e.clientX - svgF.getBoundingClientRect().left;
-        destacar(Math.min(diaHoje, Math.max(1, Math.round((rel - mF.esquerda) / (utilF / Math.max(1, N - 1))) + 1)), e);
+        destacar(Math.min(diaHoje, Math.max(1, Math.round((rel - mF.esquerda) / (utilF / (tamanho - 1))) + 1)), e);
     });
     svgF.addEventListener('pointerleave', limpar);
 }
