@@ -11,7 +11,7 @@ PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`
 | `/dash/` | Últimos eventos do ML (vendas, perguntas, mensagens, reclamações), boletos dos próximos 15 dias e logs do container `ml-jrf` | `ml_jrf`, `ml_boletos` |
 | `/dash/fila/` | Fila do webhook do ml-jrf: pendentes, falhas, botões de reprocessar e descartar | `ml_jrf.webhook_queue` |
 | `/boletos/` | Cadastro de boletos (com leitura de PDF via pdf.js), vencimento ajustado a feriados, insights | `ml_boletos` |
-| `/vendas/` | Vendas do ML copiadas para o banco: comparativo entre períodos (datas livres, padrão mês até hoje; contra o período anterior, o período anterior em dias úteis ou o mesmo período do ano passado), faturamento por mês (Full × normal), acumulado do período, Premium × Clássico, faturamento por dia da semana, cancelamentos por mês e tabela por SKU. Canceladas ficam fora das outras visões | `ml_vendas` (esquema em `sql/ml_vendas.sql`) |
+| `/vendas/` | Vendas do ML copiadas para o banco: comparativo entre períodos (datas livres, padrão mês até hoje; contra o período anterior, o período anterior em dias úteis ou o mesmo período do ano passado), faturamento por mês (Full × normal), acumulado do período, Premium × Clássico, faturamento por dia da semana, cancelamentos por mês, tabela por SKU e anúncios que não existem mais (com os equivalentes de hoje). Canceladas ficam fora das outras visões | `ml_vendas` (esquema em `sql/ml_vendas.sql`) |
 | `/full/` | Estoque dos anúncios no Full e sugestão de envio: quando criar o próximo envio e quanto mandar de cada anúncio, pelo ciclo escolhido | `ml_vendas` (tabelas `full_*`), `ml_estoque` |
 | `/estoque/` | Estoque local por SKU, com histórico (a lista de SKUs vem de `src/estoque/sku.csv`) | `ml_estoque` |
 | `/etiquetas/` | Vendas aguardando NF e prontas para imprimir; processa em lote (NF-e, DANFEs, etiquetas e mensagem) pelo serviço ml-etiquetas-web, que roda em container próprio. O `api.php` repassa as chamadas para ele (`ETIQUETAS_URL`, padrão `http://192.168.15.11:51015`) | — |
@@ -33,6 +33,8 @@ O card **Evolução da projeção do mês** não segue os filtros: mostra o acum
 No gráfico de acumulado, a comparação usa sempre o calendário, mesmo com dias úteis selecionados. Período que começa no dia 1 mostra o mês inteiro, e a comparação também.
 
 Full ou normal vem de `order_items[].stock.node_id`: armazém do ML (`BRSP02`, `BRSP04`...) é Full. Pedidos de antes de 2026-07 não trazem esse campo; para eles a cópia consulta o envio (`/shipments`).
+
+**Anúncios que não existem mais:** uma vez por dia, o Atualizar lista todos os anúncios do vendedor (`/users/{id}/items/search`, que só devolve os que existem). Anúncio que vendeu e não está na lista foi encerrado ou apagado. Para cada um, busca os anúncios de hoje com o mesmo SKU (`seller_sku`) e guarda tipo (Clássico/Premium), Full ou normal e status em `anuncios_extintos`. A tabela no fim da página usa o histórico todo, sem os filtros. Para refazer no mesmo dia: `docker exec ml-app php /var/www/html/src/vendas/sync.php --extintos`.
 
 Carga completa pela linha de comando (refaz tudo desde `VENDAS_INICIO`, sem apagar nada):
 
@@ -67,6 +69,7 @@ Criar as tabelas em um banco que já existe:
 
 ```bash
 mysql < sql/migracoes/2026-11-17-full-estoque.sql
+mysql < sql/migracoes/2026-11-18-anuncios-extintos.sql
 ```
 
 ## Níveis de alerta dos boletos

@@ -52,6 +52,16 @@ if ($action === 'dados') {
     // Feriados nacionais já cadastrados para os boletos: base da comparação por dias úteis
     $feriados = $pdo->query("SELECT DATE_FORMAT(data, '%Y-%m-%d') FROM ml_boletos.feriados WHERE data >= '2024-01-01' ORDER BY data")->fetchAll(PDO::FETCH_COLUMN);
 
+    // Anúncios que venderam e não existem mais, pelo histórico todo (cada linha: anúncio + SKU)
+    $extintos = $pdo->query("SELECT e.anuncio, e.sku, e.equivalentes,
+            SUM(i.qtd) AS unidades, SUM(i.qtd * i.preco) AS faturamento, SUM(IF(p.logistica = 'full', i.qtd, 0)) AS unidades_full,
+            GROUP_CONCAT(DISTINCT i.tipo_anuncio) AS tipos, DATE(MAX(p.data_venda)) AS ultima,
+            SUBSTRING_INDEX(GROUP_CONCAT(i.titulo ORDER BY p.data_venda DESC SEPARATOR '\n'), '\n', 1) AS titulo
+        FROM anuncios_extintos e
+        JOIN itens i ON i.anuncio = e.anuncio AND i.sku = e.sku
+        JOIN pedidos p ON p.id = i.pedido_id AND NOT p.cancelada
+        GROUP BY e.anuncio, e.sku, e.equivalentes ORDER BY unidades DESC, faturamento DESC")->fetchAll();
+
     $sinc = $pdo->query("SELECT fim, modo, pedidos, erro FROM sincronizacoes WHERE fim IS NOT NULL ORDER BY id DESC LIMIT 1")->fetch() ?: null;
     $ultimaOk = $pdo->query("SELECT MAX(fim) FROM sincronizacoes WHERE erro IS NULL")->fetchColumn() ?: null;
 
@@ -61,6 +71,11 @@ if ($action === 'dados') {
         'cancelados' => array_map(fn($c) => [$c['dia'], $c['logistica'] === 'full' ? 1 : 0, (int) $c['vendas'], (float) $c['valor']], $cancelados),
         'titulos' => $titulos,
         'feriados' => $feriados,
+        'extintos' => array_map(fn($e) => [
+            'anuncio' => $e['anuncio'], 'sku' => $e['sku'], 'titulo' => $e['titulo'], 'tipos' => explode(',', (string) $e['tipos']),
+            'unidades' => (int) $e['unidades'], 'unidadesFull' => (int) $e['unidades_full'], 'faturamento' => (float) $e['faturamento'],
+            'ultima' => $e['ultima'], 'equivalentes' => json_decode($e['equivalentes'], true),
+        ], $extintos),
         'sincronizacao' => ['ultima_ok' => $ultimaOk, 'ultima' => $sinc],
     ]);
 }

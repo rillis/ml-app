@@ -150,6 +150,25 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
             <button id="btnTodosSkus" onclick="mostrarTodosSkus = true; renderizarSkus()"
                     class="hidden mt-4 text-sm text-blue-400 hover:text-blue-300"></button>
         </section>
+
+        <section class="<?= $classeCartao ?>">
+            <h2 class="text-lg font-semibold text-gray-200">Anúncios que não existem mais</h2>
+            <p class="text-sm text-gray-400 mb-4">Anúncios encerrados ou apagados que tiveram vendas, no histórico todo (não segue o filtro de período), e os anúncios de hoje com o mesmo SKU.</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="text-gray-400 border-b border-gray-700">
+                        <tr>
+                            <th class="text-left font-medium py-2 pr-3">Anúncio e SKU</th>
+                            <th class="text-right font-medium py-2 px-1.5 sm:px-3"><span class="sm:hidden">Un.</span><span class="hidden sm:inline">Unidades</span></th>
+                            <th class="hidden sm:table-cell text-right font-medium py-2 px-3">Faturamento</th>
+                            <th class="hidden sm:table-cell text-right font-medium py-2 px-3 whitespace-nowrap">Última venda</th>
+                            <th class="text-left font-medium py-2 pl-1.5 sm:pl-3">Equivalente hoje</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelaExtintos"></tbody>
+                </table>
+            </div>
+        </section>
     </div>
 
     <div id="dica" class="hidden fixed z-50 pointer-events-none bg-gray-950 border border-gray-600 rounded-lg shadow-2xl px-3 py-2 text-sm text-gray-100"></div>
@@ -1101,6 +1120,53 @@ function renderizarSkus() {
     botao.textContent = `Mostrar todos os ${linhas.length} SKUs`;
 }
 
+// ===== Anúncios que não existem mais (histórico todo, fora dos filtros) =====
+const TIPOS_ANUNCIO = { gold_pro: 'Premium', gold_special: 'Clássico', free: 'Grátis' };
+const STATUS_ANUNCIO = { paused: 'pausado', under_review: 'em revisão', inactive: 'inativo', closed: 'encerrado' };
+const linkAnuncio = id => `https://produto.mercadolivre.com.br/${id.replace(/^MLB/, 'MLB-')}`;
+const etiqueta = (texto, classe) => `<span class="text-[11px] px-1.5 py-0.5 rounded border ${classe} whitespace-nowrap">${esc(texto)}</span>`;
+const etiquetaTipo = tipo => etiqueta(TIPOS_ANUNCIO[tipo] || tipo || '?', tipo === 'gold_pro' ? 'border-emerald-700 text-emerald-300' : 'border-amber-700 text-amber-300');
+const codigoAnuncio = id => `<button type="button" onclick="copiarCodigo('${esc(id)}')" title="Copiar código do anúncio" class="text-blue-400 hover:text-blue-300 tabular-nums cursor-copy">${esc(id)}</button><a href="${linkAnuncio(id)}" target="_blank" rel="noopener" title="Abrir anúncio em nova guia" aria-label="Abrir anúncio ${esc(id)} em nova guia" class="inline-block ml-1 px-0.5 text-gray-400 hover:text-blue-300">↗</a>`;
+
+async function copiarCodigo(codigo) {
+    try {
+        await navigator.clipboard.writeText(codigo);
+        ML.toast(`${codigo} copiado.`, 'sucesso');
+    } catch (e) {
+        ML.toast('Não foi possível copiar.', 'erro');
+    }
+}
+
+function renderizarExtintos() {
+    const linhas = dados.extintos || [];
+    document.getElementById('tabelaExtintos').innerHTML = linhas.length ? linhas.map(l => {
+        const logistica = l.unidadesFull === 0 ? 'normal' : l.unidadesFull === l.unidades ? 'Full' : `Full ${pct(l.unidadesFull / l.unidades * 100)}`;
+        const equivalentes = !l.sku ? '<span class="text-gray-500">sem SKU para comparar</span>'
+            : l.equivalentes.length ? l.equivalentes.map(e => `
+                <div class="flex flex-wrap items-center gap-1.5 py-0.5" title="${esc(e.titulo)}">
+                    <span class="text-xs">${codigoAnuncio(e.id)}</span>
+                    ${etiquetaTipo(e.tipo)}
+                    ${etiqueta(e.full ? 'Full' : 'normal', e.full ? 'border-sky-700 text-sky-300' : 'border-gray-600 text-gray-300')}
+                    ${e.status !== 'active' ? etiqueta(STATUS_ANUNCIO[e.status] || e.status, 'border-gray-600 text-gray-400') : ''}
+                </div>`).join('')
+            : '<span class="text-amber-300">nenhum anúncio com este SKU</span>';
+        return `<tr class="border-b border-gray-700/60 align-top">
+            <td class="py-2 pr-3 max-w-[9rem] sm:max-w-none">
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>
+                    ${l.tipos.map(etiquetaTipo).join('')}
+                    ${etiqueta(logistica, l.unidadesFull ? 'border-sky-700 text-sky-300' : 'border-gray-600 text-gray-300')}
+                </div>
+                <div class="text-xs flex min-w-0 sm:max-w-sm"><span class="whitespace-nowrap">${codigoAnuncio(l.anuncio)}</span><span class="hidden sm:inline text-gray-500 truncate" title="${esc(l.titulo)}">&nbsp;· ${esc(l.titulo)}</span></div>
+            </td>
+            <td class="py-2 px-1.5 sm:px-3 text-right tabular-nums">${inteiro(l.unidades)}</td>
+            <td class="hidden sm:table-cell py-2 px-3 text-right tabular-nums whitespace-nowrap">${moeda(l.faturamento)}</td>
+            <td class="hidden sm:table-cell py-2 px-3 text-right tabular-nums whitespace-nowrap">${dataCurta(l.ultima)}</td>
+            <td class="py-2 pl-1.5 sm:pl-3">${equivalentes}</td>
+        </tr>`;
+    }).join('') : '<tr><td colspan="5" class="py-6 text-center text-gray-500">Nenhum anúncio com vendas foi encerrado. A conferência roda uma vez por dia, no Atualizar.</td></tr>';
+}
+
 function mostrarSincronizacao() {
     const s = dados.sincronizacao || {};
     const el = document.getElementById('statusSinc');
@@ -1120,6 +1186,7 @@ async function carregar() {
     feriados = new Set(dados.feriados || []);
     mostrarSincronizacao();
     renderizar();
+    renderizarExtintos();
 }
 
 async function atualizar() {
@@ -1137,6 +1204,7 @@ async function atualizar() {
             : 'Nada mudou desde a última atualização';
         ML.toast(`${detalhe} (${inteiro(resposta.lidos)} conferidos em ${String(resposta.segundos).replace('.', ',')} s)`, mudancas ? 'sucesso' : 'info');
         if (resposta.full && resposta.full.erro) ML.toast('Estoque Full não atualizou: ' + resposta.full.erro, 'aviso');
+        if (resposta.extintos && resposta.extintos.erro) ML.toast('Anúncios extintos não atualizaram: ' + resposta.extintos.erro, 'aviso');
         await carregar();
     } catch (e) {
         ML.toast(e.message, 'erro');

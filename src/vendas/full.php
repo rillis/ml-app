@@ -4,7 +4,7 @@
 
 require_once __DIR__ . '/sync.php';
 
-// Vários GETs em paralelo (8 por vez). Devolve [chave => resposta]; o que falhar é refeito sozinho por vendas_get.
+// Vários GETs em paralelo (8 por vez). Devolve [chave => resposta].
 function vendas_get_varios(array $caminhos): array
 {
     $respostas = [];
@@ -30,7 +30,8 @@ function vendas_get_varios(array $caminhos): array
             $corpo = curl_multi_getcontent($ch);
             curl_multi_remove_handle($multi, $ch);
             curl_close($ch);
-            $respostas[$chave] = $codigo === 200 ? json_decode($corpo, true) : vendas_get($lote[$chave]);
+            // 404 (anúncio apagado, sem estoque etc.) vira null; o resto que falhar é refeito por vendas_get
+            $respostas[$chave] = $codigo === 200 ? json_decode($corpo, true) : ($codigo === 404 ? null : vendas_get($lote[$chave]));
         }
         curl_multi_close($multi);
     }
