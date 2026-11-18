@@ -457,11 +457,11 @@ function renderizarMensal() {
     const meses = [];
     for (let m = [...porMes.keys()][0] + '-01'; m.slice(0, 7) <= mesAtual; m = mudarMes(m, 1)) meses.push(m.slice(0, 7));
 
-    // De baixo para cima: realizado normal, realizado Full, projeção normal, projeção Full
+    // De baixo para cima, sempre: normal, projeção normal, Full, projeção Full
     const series = [
         { nome: 'Normal', cor: COR_REAL_NORMAL, full: 0, valor: m => (porMes.get(m) || [0, 0])[0] },
-        { nome: 'Full', cor: COR_REAL_FULL, full: 1, valor: m => (porMes.get(m) || [0, 0])[1] },
         { nome: 'Projeção normal', cor: COR_PROJ_NORMAL, full: 0, proj: true, valor: m => (proj && m === proj.mes ? proj.restante * (1 - proj.mix) : 0) },
+        { nome: 'Full', cor: COR_REAL_FULL, full: 1, valor: m => (porMes.get(m) || [0, 0])[1] },
         { nome: 'Projeção Full', cor: COR_PROJ_FULL, full: 1, proj: true, valor: m => (proj && m === proj.mes ? proj.restante * proj.mix : 0) },
     ].filter(s => logisticas.has(s.full) && (!s.proj || (proj && proj.restante > 0)));
     document.getElementById('legendaMensal').innerHTML = legenda(series.map(s => [s.cor, s.nome]));
