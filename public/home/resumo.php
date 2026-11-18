@@ -1,6 +1,6 @@
 <?php
-// Resumo para os cards da home (home.rillis.com.br): boletos por nível e se o mês atual
-// das contas pessoais já foi salvo. Só responde na rede local, sem passar pela Cloudflare.
+// Resumo para os cards da home (home.rillis.com.br): boletos por nível, se o mês atual
+// das contas pessoais já foi salvo e as vendas de hoje e do mês. Só responde na rede local, sem passar pela Cloudflare.
 
 function rede_local(string $ip): bool
 {
@@ -48,12 +48,29 @@ $mes = $agora->format('Y-m-01');
 $meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 $stmt = $pdo->prepare('SELECT 1 FROM contas_pessoais.meses_salvos WHERE username = ? AND mes = ?');
 $stmt->execute(['rillis', $mes]);
+$salvo = (bool)$stmt->fetchColumn();
+
+// Vendas da cópia em ml_vendas (só muda pelo botão Atualizar de /vendas/). Mesma contagem da
+// tela: um carrinho (pack) é uma venda, canceladas ficam de fora.
+$hojeVendas = $agora->format('Y-m-d');
+$stmt = $pdo->prepare("SELECT
+        COUNT(DISTINCT CASE WHEN data_venda >= ? THEN COALESCE(pack_id, id) END) AS hoje,
+        COUNT(DISTINCT COALESCE(pack_id, id)) AS mes
+    FROM ml_vendas.pedidos WHERE NOT cancelada AND data_venda >= ?");
+$stmt->execute([$hojeVendas, $mes]);
+$vendas = $stmt->fetch();
+$sinc = $pdo->query("SELECT MAX(fim) FROM ml_vendas.sincronizacoes WHERE erro IS NULL AND fim IS NOT NULL")->fetchColumn();
 
 echo json_encode([
     'boletos' => $niveis,
+    'vendas'  => [
+        'hoje'        => (int)$vendas['hoje'],
+        'mes'         => (int)$vendas['mes'],
+        'atualizado'  => $sinc ?: null,
+    ],
     'contas'  => [
         'mes'    => $mes,
         'rotulo' => $meses[(int)$agora->format('n') - 1] . '/' . $agora->format('y'),
-        'salvo'  => (bool)$stmt->fetchColumn(),
+        'salvo'  => $salvo,
     ],
 ]);
