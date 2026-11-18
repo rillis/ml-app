@@ -6,6 +6,7 @@ $modulos = [
     '/full/'    => ['🚚', 'Full'],
     '/boletos/' => ['📑', 'Boletos'],
     '/estoque/' => ['📦', 'Estoque'],
+    '/etiquetas/' => ['🏷️', 'Etiquetas'],
     '/contas/'  => ['💳', 'Contas'],
 ];
 $scriptAtual = $_SERVER['SCRIPT_NAME'] ?? '';

@@ -14,6 +14,7 @@ PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`
 | `/vendas/` | Vendas do ML copiadas para o banco: comparativo entre períodos (datas livres, padrão mês até hoje; contra o período anterior, o período anterior em dias úteis ou o mesmo período do ano passado), faturamento por mês (Full × normal), acumulado do período, Premium × Clássico, faturamento por dia da semana, cancelamentos por mês e tabela por SKU. Canceladas ficam fora das outras visões | `ml_vendas` (esquema em `sql/ml_vendas.sql`) |
 | `/full/` | Estoque dos anúncios no Full e sugestão de envio: quando criar o próximo envio e quanto mandar de cada anúncio, pelo ciclo escolhido | `ml_vendas` (tabelas `full_*`), `ml_estoque` |
 | `/estoque/` | Estoque local por SKU, com histórico (a lista de SKUs vem de `src/estoque/sku.csv`) | `ml_estoque` |
+| `/etiquetas/` | Vendas aguardando NF e prontas para imprimir; processa em lote (NF-e, DANFEs, etiquetas e mensagem) pelo serviço ml-etiquetas-web, que roda em container próprio. O `api.php` repassa as chamadas para ele (`ETIQUETAS_URL`, padrão `http://192.168.15.11:51015`) | — |
 | `/contas/` | Contas pessoais mensais, leitura de fatura de cartão em PDF, parcelas e insights | `contas_pessoais` (esquema em `sql/contas_pessoais.sql`) |
 | `/home/resumo.php` | JSON para os cards da home (home.rillis.com.br): boletos em aberto por nível e se o mês atual das contas foi salvo | `ml_boletos`, `contas_pessoais` |
 
