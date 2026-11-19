@@ -14,7 +14,7 @@ const codigoAnuncio = codigo => `<button type="button" data-copiar="${esc(codigo
 const urlPlanilha =(modulo, nome) => `api.php?r=arquivo&modulo=${modulo}&nome=${encodeURIComponent(nome)}`;
 
 const LIMITE_LINHAS = 300;
-const NOME_TAREFA = { atualizar: 'Atualização das margens', recalcular: 'Recálculo da margem', teste: 'Teste da margem', parcial: 'Atualização de alguns anúncios', skus: 'Comparação de SKUs', pares: 'Busca de anúncios sem par', clonar: 'Criação da opção de venda', gtin: 'Correção do GTIN duplicado' };
+const NOME_TAREFA = { atualizar: 'Atualização das margens', recalcular: 'Recálculo da margem', teste: 'Teste da margem', parcial: 'Atualização de alguns anúncios', skus: 'Comparação de SKUs', pares: 'Busca de anúncios sem par', clonar: 'Criação da opção de venda', gtin: 'Correção do GTIN duplicado', formato: 'Formato de venda e nova tentativa' };
 const STATUS = { active: 'ativo', paused: 'pausado', closed: 'encerrado', under_review: 'em revisão', inactive: 'inativo' };
 
 let estado = null;          // /api/estado
@@ -135,7 +135,7 @@ function mostrarJob(job) {
                 <button type="button" id="btnVisto" class="${CLASSE_BOTAO} text-sm">Ok</button>
             </div>
         </div>
-        ${job.estado !== 'ok' || ['clonar', 'gtin'].includes(job.tipo) ? log : ''}`;
+        ${job.estado !== 'ok' || ['clonar', 'gtin', 'formato'].includes(job.tipo) ? log : ''}`;
     $('#btnVisto').addEventListener('click', async () => {
         await postJson('visto').catch(() => null);
         painel.classList.add('hidden');
@@ -152,7 +152,7 @@ function acompanharJob() {
             return; // falha passageira: tenta de novo no próximo ciclo
         }
         mostrarJob(job);
-        if (job && job.tipo === 'clonar') await mostrarModalClonar(job);
+        if (job && ['clonar', 'formato'].includes(job.tipo)) await mostrarModalClonar(job);
         if (!job || job.estado !== 'rodando') {
             clearInterval(pollJob);
             pollJob = null;
@@ -169,7 +169,7 @@ async function iniciarJob(dados) {
     try {
         const { job } = await postJson('iniciar', dados);
         mostrarJob(job);
-        if (job.tipo === 'clonar') await mostrarModalClonar(job);
+        if (['clonar', 'formato'].includes(job.tipo)) await mostrarModalClonar(job);
         acompanharJob();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
@@ -188,7 +188,7 @@ async function recarregarTudo(tipo) {
     if (tipo === 'skus') await carregarSkus();
     else if (tipo === 'teste') await carregarTeste();
     else if (tipo === 'pares' || tipo === 'gtin') await carregarClonar();
-    else if (tipo === 'clonar') await Promise.all([carregarClonar(), carregarMargem()]);
+    else if (tipo === 'clonar' || tipo === 'formato') await Promise.all([carregarClonar(), carregarMargem()]);
     else await carregarMargem();
     if ($('#avancado').open) carregarPlanilhas();
 }
@@ -569,7 +569,7 @@ function renderClonar() {
             </td>
             <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap">${brl(l.preco)}</td>
             <td class="py-2 px-2 sm:px-3 text-right">${margemCel}</td>
-            <td class="py-2 pl-2 sm:pl-3 text-right">${acao}</td>
+            <td class="py-2 pl-2 sm:pl-3 text-right"><div class="flex flex-wrap justify-end gap-2">${erro && erroFormato(erro.erro) ? `<button type="button" data-formato="${esc(l.codigo)}" data-sku="${esc(l.sku)}" class="${CLASSE_BOTAO} text-sm job whitespace-nowrap" ${jobRodando ? 'disabled' : ''} title="Corrigir formato de venda e quantidade e tentar de novo">✏️ Formato</button>` : ''}${acao}</div></td>
         </tr>`;
     }).join('') : `<tr><td colspan="5" class="py-6 text-center text-gray-500">${p ? 'Nenhum anúncio sem par com esses filtros.' : 'Use Buscar anúncios sem par.'}</td></tr>`;
     // marcados que saíram da lista (já clonados) deixam de contar
@@ -637,7 +637,7 @@ function abrirModalClonar() {
 }
 
 async function mostrarModalClonar(job) {
-    if (!job || job.tipo !== 'clonar') return;
+    if (!job || !['clonar', 'formato'].includes(job.tipo)) return;
     let andamento = null;
     try { andamento = (await api('clonar_andamento')).andamento; } catch (e) { /* tenta no próximo ciclo */ }
     const codigos = (job.opcoes?.itens || job.opcoes?.item || '').split(',').filter(Boolean);
@@ -646,6 +646,7 @@ async function mostrarModalClonar(job) {
     const daLista = new Map((clonar?.pares?.linhas || []).map(l => [l.codigo, l]));
     const itens = andamento ? andamento.itens : codigos.map(c => ({ original: c, etapa: 'fila' }));
     const rodando = job.estado === 'rodando';
+    const passoCriar = job.tipo === 'formato' ? 2 : 1;  // no "formato", antes de criar vem a correção
     if (!rodando) itens.forEach(i => { if (['fila', 'criando', 'conferindo'].includes(i.etapa)) i.etapa = 'parado'; });
 
     const total = itens.length;
@@ -654,7 +655,8 @@ async function mostrarModalClonar(job) {
     const leitura = Math.max(0, ...itens.filter(i => i.etapa === 'conferindo').map(i => i.rodada || 0));
     let titulo;
     if (!rodando) titulo = job.estado === 'ok' ? `Pronto: ${conta('ok')} de ${total} cravado${conta('ok') !== 1 ? 's' : ''}` : (job.estado === 'parado' ? 'Parado' : 'Terminou com erro');
-    else if (job.passo > 1) titulo = 'Atualizando a planilha de margem…';
+    else if (job.passo < passoCriar) titulo = 'Corrigindo o formato de venda…';
+    else if (job.passo > passoCriar) titulo = 'Atualizando a planilha de margem…';
     else if (conta('fila') || conta('criando')) titulo = `Criando ${total - conta('fila')}/${total}…`;
     else titulo = `Conferindo a margem${leitura ? ` · leitura ${leitura} de ${andamento?.rodadas || 10}` : ''}…`;
     $('#clonarTitulo').textContent = titulo;
@@ -679,6 +681,7 @@ async function mostrarModalClonar(job) {
                 <span class="text-sm ${cor} text-right whitespace-nowrap">${esc(ETAPA_CLONE[i.etapa] || i.etapa)}${rodada}<span class="tabular-nums">${valores}</span></span>
             </div>
             ${i.erro ? `<div class="text-sm text-red-400 mt-1 ml-8">${esc(i.erro)}</div>` : ''}
+            ${!rodando && i.etapa === 'erro' && erroFormato(i.erro) ? `<div class="mt-2 ml-8"><button type="button" data-formato="${esc(i.original)}" data-sku="${esc(sku)}" class="${CLASSE_BOTAO} text-sm">✏️ Corrigir e tentar de novo</button></div>` : ''}
             ${(i.avisos || []).map(a => `<div class="text-xs text-amber-300 mt-1 ml-8">${esc(a)}</div>`).join('')}
         </li>`;
     }).join('');
@@ -739,6 +742,42 @@ function fecharPlanoGtin() {
     const m = $('#modalGtin');
     m.classList.add('hidden');
     m.classList.remove('flex');
+}
+
+// ----- formato de venda e quantidade (erro UNITS_PER_PACK, com "Kit" ou com "Unidade")
+
+const erroFormato = texto => /UNITS_PER_PACK|Quantidade de embalagens/i.test(texto || '');
+let formatoItem = null;
+
+function abrirFormato(codigo, sku) {
+    formatoItem = codigo;
+    // sugestão pelo SKU: kit soma as peças ("A+2xB" = 3); peça única = Unidade 1
+    const partes = String(sku || '').split('+').map(p => p.trim()).filter(Boolean);
+    const qtd = partes.reduce((s, p) => s + (parseInt((p.match(/^(\d+)\s*[xX]/) || [])[1], 10) || 1), 0) || 1;
+    const kit = partes.length > 1 || qtd > 1;
+    $('#formatoTitulo').textContent = `Formato de venda · ${sku || codigo}`;
+    $('#formatoSub').textContent = codigo;
+    $('#formatoTipo').value = kit ? 'pack' : 'unidade';
+    $('#formatoQtd').value = kit ? qtd : 1;
+    const m = $('#modalFormato');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+    $('#formatoQtd').focus();
+}
+
+function fecharFormato() {
+    const m = $('#modalFormato');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+}
+
+async function salvarFormato(e) {
+    e.preventDefault();
+    const qtd = parseInt($('#formatoQtd').value, 10);
+    if (!(qtd >= 1 && qtd <= 100)) { ML.toast('Quantidade de 1 a 100.', 'aviso'); return; }
+    fecharFormato();
+    if ($('#modalClonar').classList.contains('flex')) await fecharModalClonar();
+    iniciarJob({ tipo: 'formato', item: formatoItem, formato: $('#formatoTipo').value, qtd });
 }
 
 async function criarOpcao(codigo) {
@@ -907,6 +946,13 @@ function ligarEventos() {
     $('#btnClonarMarcados').addEventListener('click', criarMarcados);
     $('#btnClonarFechar').addEventListener('click', fecharModalClonar);
     $('#btnGtinCancelar').addEventListener('click', fecharPlanoGtin);
+    $('#btnFormatoCancelar').addEventListener('click', fecharFormato);
+    $('#formFormato').addEventListener('submit', salvarFormato);
+    // o botão aparece na lista e no modal de andamento (conteúdo redesenhado): um ouvinte só
+    document.addEventListener('click', e => {
+        const b = e.target.closest('[data-formato]');
+        if (b && !b.disabled) abrirFormato(b.dataset.formato, b.dataset.sku);
+    });
     $('#btnGtinCorrigir').addEventListener('click', () => {
         fecharPlanoGtin();
         if (gtinItem) iniciarJob({ tipo: 'gtin', item: gtinItem });

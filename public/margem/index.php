@@ -296,6 +296,30 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
             </div>
         </div>
 
+        <!-- Formato de venda e quantidade (erro UNITS_PER_PACK): grava e tenta criar de novo -->
+        <div id="modalFormato" class="hidden fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm justify-center items-center p-4">
+            <form id="formFormato" role="dialog" aria-modal="true" aria-labelledby="formatoTitulo" class="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md p-5 sm:p-6">
+                <h2 id="formatoTitulo" class="text-xl font-bold">Formato de venda</h2>
+                <p id="formatoSub" class="text-sm text-gray-400 mt-1"></p>
+                <p class="text-xs text-gray-500 mt-2">O ML pede a quantidade sempre que o formato de venda está preenchido. Esses campos não aparecem no painel: são gravados pela API no produto e depois a criação tenta de novo.</p>
+                <div class="flex flex-wrap items-end gap-3 mt-4">
+                    <label class="text-sm text-gray-400 flex flex-col gap-1">Formato de venda
+                        <select id="formatoTipo" class="<?= $classeCampo ?>">
+                            <option value="unidade">Unidade</option>
+                            <option value="pack">Kit / pack</option>
+                        </select>
+                    </label>
+                    <label class="text-sm text-gray-400 flex flex-col gap-1">Quantidade
+                        <input id="formatoQtd" type="number" min="1" max="100" step="1" required class="<?= $classeCampo ?> w-24">
+                    </label>
+                </div>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button type="button" id="btnFormatoCancelar" class="<?= $classeBotao ?>">Cancelar</button>
+                    <button type="submit" class="<?= $classePrimario ?> job">Salvar e tentar de novo</button>
+                </div>
+            </form>
+        </div>
+
         <!-- Plano de correção do GTIN duplicado -->
         <div id="modalGtin" class="hidden fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm justify-center items-center p-4">
             <div role="dialog" aria-modal="true" aria-labelledby="gtinTitulo" class="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5 sm:p-6">
