@@ -179,6 +179,34 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
             </details>
         </div>
 
+        <!-- Edição à mão de um anúncio na última busca (corrigir divergência com o painel do ML) -->
+        <div id="modalEditar" class="hidden fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm justify-center items-center p-4">
+            <form id="formEditar" role="dialog" aria-modal="true" aria-labelledby="editarTitulo" class="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg p-5 sm:p-6">
+                <h2 id="editarTitulo" class="text-xl font-bold">Editar anúncio</h2>
+                <p id="editarSub" class="text-sm text-gray-400 mt-1"></p>
+                <p class="text-xs text-gray-500 mt-2">Muda só a última busca e recalcula a margem, sem chamar o ML. O próximo Atualizar margens (ou Só alguns com este anúncio) busca de novo no ML e desfaz a edição.</p>
+                <div class="grid grid-cols-2 gap-3 mt-4">
+                    <label class="text-sm text-gray-400 flex flex-col gap-1">Preço de venda (R$)
+                        <input id="editarPreco" type="text" inputmode="decimal" class="<?= $classeCampo ?>">
+                    </label>
+                    <label class="text-sm text-gray-400 flex flex-col gap-1">Tarifa do ML (%)
+                        <input id="editarTaxa" type="text" inputmode="decimal" class="<?= $classeCampo ?>">
+                    </label>
+                    <label class="text-sm text-gray-400 flex flex-col gap-1" title="Custo de envio nos anúncios com frete grátis">Frete (R$)
+                        <input id="editarFrete" type="text" inputmode="decimal" class="<?= $classeCampo ?>">
+                    </label>
+                    <label class="text-sm text-gray-400 flex flex-col gap-1" title="Custo por venda nos anúncios sem frete grátis">Adc (R$)
+                        <input id="editarAdc" type="text" inputmode="decimal" class="<?= $classeCampo ?>">
+                    </label>
+                </div>
+                <p id="editarPrevia" class="text-sm text-gray-300 mt-4 tabular-nums"></p>
+                <div class="flex justify-end gap-3 mt-5">
+                    <button type="button" id="btnEditarCancelar" class="<?= $classeBotao ?>">Cancelar</button>
+                    <button type="submit" class="<?= $classePrimario ?> job">Salvar e recalcular</button>
+                </div>
+            </form>
+        </div>
+
         <!-- ===== SIMULADOR ===== -->
         <div data-secao="simulador" class="hidden">
             <section class="<?= $classeCartao ?>">

@@ -14,7 +14,7 @@ const codigoAnuncio = codigo => `<button type="button" data-copiar="${esc(codigo
 const urlPlanilha =(modulo, nome) => `api.php?r=arquivo&modulo=${modulo}&nome=${encodeURIComponent(nome)}`;
 
 const LIMITE_LINHAS = 300;
-const NOME_TAREFA = { atualizar: 'Atualização das margens', recalcular: 'Recálculo da margem', teste: 'Teste da margem', parcial: 'Atualização de alguns anúncios', skus: 'Comparação de SKUs', pares: 'Busca de anúncios sem par', clonar: 'Criação da opção de venda', gtin: 'Correção do GTIN duplicado', formato: 'Formato de venda e nova tentativa' };
+const NOME_TAREFA = { atualizar: 'Atualização das margens', recalcular: 'Recálculo da margem', teste: 'Teste da margem', parcial: 'Atualização de alguns anúncios', skus: 'Comparação de SKUs', editar: 'Edição à mão', pares: 'Busca de anúncios sem par', clonar: 'Criação da opção de venda', gtin: 'Correção do GTIN duplicado', formato: 'Formato de venda e nova tentativa' };
 const STATUS = { active: 'ativo', paused: 'pausado', closed: 'encerrado', under_review: 'em revisão', inactive: 'inativo' };
 
 let estado = null;          // /api/estado
@@ -320,7 +320,7 @@ function renderTabelaMargem() {
         return `<tr class="border-t border-gray-700/60 align-top">
             <td class="py-2 pr-2 sm:pr-3 max-w-[11rem] sm:max-w-sm">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>${etiquetas(l)}${status}
+                    <span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>${etiquetas(l)}${status}<button type="button" data-editar="${esc(l.codigo)}" class="job text-xs px-1 rounded text-gray-500 hover:text-blue-300 hover:bg-gray-700 disabled:opacity-40" ${jobRodando ? 'disabled' : ''} title="Editar preço, tarifa, frete e adc à mão" aria-label="Editar ${esc(l.sku || l.codigo)}">✏️</button>
                 </div>
                 <div class="text-xs truncate">${codigoAnuncio(l.codigo)}<span class="text-gray-500" title="${esc(l.titulo)}"> · ${esc(l.titulo)}</span></div>
                 ${l.situacao === 'sem' ? `<div class="text-xs text-red-300">${esc(l.como)}</div>` : ''}
@@ -744,6 +744,62 @@ function fecharPlanoGtin() {
     m.classList.remove('flex');
 }
 
+// ----- edição à mão de um anúncio (aba Margem)
+
+let editando = null;
+const numBR = v => String(+(+v).toFixed(4)).replace('.', ',');
+const lerNum = s => { let t = String(s).replace(/R\$|\s/g, ''); if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.'); return t === '' ? NaN : Number(t); };
+
+function abrirEdicao(codigo) {
+    const l = margem?.linhas.find(x => x.codigo === codigo);
+    if (!l) return;
+    editando = l;
+    $('#editarTitulo').textContent = `Editar ${l.sku || codigo}`;
+    $('#editarSub').innerHTML = `${esc(codigo)} · ${esc(l.titulo || '')}`;
+    $('#editarPreco').value = numBR(l.preco);
+    $('#editarTaxa').value = numBR(l.taxa * 100);
+    $('#editarFrete').value = numBR(l.frete);
+    $('#editarAdc').value = numBR(l.adc);
+    previaEdicao();
+    const m = $('#modalEditar');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+    $('#editarFrete').focus();
+}
+
+function fecharEdicao() {
+    const m = $('#modalEditar');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+}
+
+// margem com os valores digitados (mesma conta da planilha)
+function previaEdicao() {
+    const l = editando;
+    const p = lerNum($('#editarPreco').value), t = lerNum($('#editarTaxa').value) / 100;
+    const f = lerNum($('#editarFrete').value), a = lerNum($('#editarAdc').value);
+    if ([p, t, f, a].some(Number.isNaN) || p <= 0) { $('#editarPrevia').textContent = 'Preencha os quatro valores com números.'; return; }
+    const recebe = p * (1 - t) - f - a;
+    if (l.custo_desc == null) { $('#editarPrevia').textContent = `Você recebe ${brl(recebe)} · sem custo na tabela`; return; }
+    const lucro = recebe - l.custo_desc, m = lucro / p;
+    const cor = m < margem.meta - margem.tolerancia ? 'text-red-300' : m > margem.meta + margem.tolerancia ? 'text-amber-300' : 'text-emerald-300';
+    $('#editarPrevia').innerHTML = `Você recebe ${brl(recebe)} · lucro ${brl(lucro)} · margem <strong class="${cor}">${pct(m, 2)}</strong> <span class="text-gray-500">(antes ${pct(l.margem, 2)})</span>`;
+}
+
+async function salvarEdicao(e) {
+    e.preventDefault();
+    const l = editando;
+    const novos = { preco: lerNum($('#editarPreco').value), taxa: lerNum($('#editarTaxa').value), frete: lerNum($('#editarFrete').value), adc: lerNum($('#editarAdc').value) };
+    if (Object.values(novos).some(Number.isNaN)) { ML.toast('Preencha os quatro valores com números.', 'aviso'); return; }
+    // manda só o que mudou
+    const atuais = { preco: l.preco, taxa: l.taxa * 100, frete: l.frete, adc: l.adc };
+    const dados = { tipo: 'editar', item: l.codigo };
+    for (const k of Object.keys(novos)) if (Math.abs(novos[k] - atuais[k]) > 0.00001) dados[k] = novos[k];
+    if (Object.keys(dados).length === 2) { ML.toast('Nada mudou.', 'info'); return; }
+    fecharEdicao();
+    iniciarJob(dados);
+}
+
 // ----- dica flutuante: aparece logo ao passar o mouse (ou focar) em qualquer elemento com data-dica
 
 function ligarDicas() {
@@ -968,6 +1024,13 @@ function ligarEventos() {
     $('#btnClonarFechar').addEventListener('click', fecharModalClonar);
     $('#btnGtinCancelar').addEventListener('click', fecharPlanoGtin);
     $('#btnFormatoCancelar').addEventListener('click', fecharFormato);
+    $('#btnEditarCancelar').addEventListener('click', fecharEdicao);
+    $('#formEditar').addEventListener('submit', salvarEdicao);
+    ['#editarPreco', '#editarTaxa', '#editarFrete', '#editarAdc'].forEach(s => $(s).addEventListener('input', previaEdicao));
+    $('#tabelaMargem').addEventListener('click', e => {
+        const b = e.target.closest('[data-editar]');
+        if (b && !b.disabled) abrirEdicao(b.dataset.editar);
+    });
     ligarDicas();
     $('#formFormato').addEventListener('submit', salvarFormato);
     // o botão aparece na lista e no modal de andamento (conteúdo redesenhado): um ouvinte só
