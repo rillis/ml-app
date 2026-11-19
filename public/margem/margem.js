@@ -553,11 +553,11 @@ function renderClonar() {
         const pausado = l.status !== 'active' ? pilula(STATUS[l.status] || l.status, 'border-gray-600 text-gray-400') : '';
         const gtinRuim = l.gtin && !l.gtin.corrigido;
         const erro = erroDe(l);
-        const erroPilula = erro ? `<span title="${esc(`${quando(erro.inicio)}: ${erro.erro || ''}`)}">${pilula('Erro ao criar', 'bg-red-900/60 text-red-200 border-red-500/40')}</span>` : '';
+        const erroPilula = erro ? `<span data-dica="${esc(`Último erro (${quando(erro.inicio)}):\n${(erro.erro || '').replace(/^O ML recusou a criação: /, '')}`)}" tabindex="0" class="cursor-help">${pilula('Erro ao criar', 'bg-red-900/60 text-red-200 border-red-500/40')}</span>` : '';
         const gtinTitulo = l.gtin ? `GTIN ${l.gtin.codigo} também em: ` + l.gtin.outros.map(o => `${o.sku} (${o.codigo})`).join(', ') : '';
         const gtinPilula = !l.gtin ? '' : gtinRuim
-            ? `<span title="${esc(gtinTitulo)}">${pilula('GTIN duplicado', 'bg-red-900/60 text-red-200 border-red-500/40')}</span>`
-            : `<span title="${esc(gtinTitulo)}">${pilula('GTIN corrigido', 'border-emerald-500/40 text-emerald-300')}</span>`;
+            ? `<span data-dica="${esc(gtinTitulo)}" tabindex="0" class="cursor-help">${pilula('GTIN duplicado', 'bg-red-900/60 text-red-200 border-red-500/40')}</span>`
+            : `<span data-dica="${esc(gtinTitulo)}" tabindex="0" class="cursor-help">${pilula('GTIN corrigido', 'border-emerald-500/40 text-emerald-300')}</span>`;
         const acao = gtinRuim
             ? `<button type="button" data-gtin="${esc(l.codigo)}" class="${CLASSE_BOTAO} text-sm job whitespace-nowrap" ${jobRodando ? 'disabled' : ''} title="${esc(gtinTitulo)}">🔧 Corrigir GTIN</button>`
             : `<button type="button" data-clonar="${esc(l.codigo)}" class="${CLASSE_BOTAO} text-sm job whitespace-nowrap" ${jobRodando ? 'disabled' : ''}>➕ ${esc(l.falta)}</button>`;
@@ -742,6 +742,27 @@ function fecharPlanoGtin() {
     const m = $('#modalGtin');
     m.classList.add('hidden');
     m.classList.remove('flex');
+}
+
+// ----- dica flutuante: aparece logo ao passar o mouse (ou focar) em qualquer elemento com data-dica
+
+function ligarDicas() {
+    const dica = $('#dica');
+    const mostrar = el => {
+        dica.textContent = el.dataset.dica;
+        dica.classList.remove('hidden');
+        const r = el.getBoundingClientRect(), d = dica.getBoundingClientRect();
+        const x = Math.max(8, Math.min(r.left, innerWidth - d.width - 8));
+        const y = r.bottom + 6 + d.height > innerHeight ? r.top - d.height - 6 : r.bottom + 6;
+        dica.style.left = x + 'px';
+        dica.style.top = y + 'px';
+    };
+    const esconder = () => dica.classList.add('hidden');
+    document.addEventListener('mouseover', e => { const el = e.target.closest('[data-dica]'); if (el) mostrar(el); });
+    document.addEventListener('mouseout', e => { if (e.target.closest('[data-dica]')) esconder(); });
+    document.addEventListener('focusin', e => { const el = e.target.closest('[data-dica]'); if (el) mostrar(el); });
+    document.addEventListener('focusout', esconder);
+    addEventListener('scroll', esconder, true);
 }
 
 // ----- formato de venda e quantidade (erro UNITS_PER_PACK, com "Kit" ou com "Unidade")
@@ -947,6 +968,7 @@ function ligarEventos() {
     $('#btnClonarFechar').addEventListener('click', fecharModalClonar);
     $('#btnGtinCancelar').addEventListener('click', fecharPlanoGtin);
     $('#btnFormatoCancelar').addEventListener('click', fecharFormato);
+    ligarDicas();
     $('#formFormato').addEventListener('submit', salvarFormato);
     // o botão aparece na lista e no modal de andamento (conteúdo redesenhado): um ouvinte só
     document.addEventListener('click', e => {

@@ -296,6 +296,9 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
             </div>
         </div>
 
+        <!-- Dica flutuante dos elementos com data-dica (a tabela tem rolagem própria e cortaria uma dica comum) -->
+        <div id="dica" role="tooltip" class="hidden fixed z-[80] max-w-sm bg-gray-950 border border-gray-600 rounded-lg shadow-2xl px-3 py-2 text-xs text-gray-200 whitespace-pre-line pointer-events-none"></div>
+
         <!-- Formato de venda e quantidade (erro UNITS_PER_PACK): grava e tenta criar de novo -->
         <div id="modalFormato" class="hidden fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm justify-center items-center p-4">
             <form id="formFormato" role="dialog" aria-modal="true" aria-labelledby="formatoTitulo" class="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-md p-5 sm:p-6">
