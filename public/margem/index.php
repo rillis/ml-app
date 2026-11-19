@@ -246,6 +246,7 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
                         <option value="">Ativos e pausados</option>
                         <option value="active">Ativos</option>
                         <option value="paused">Pausados</option>
+                        <option value="erro">Com erro ao criar</option>
                     </select>
                 </div>
                 <div class="overflow-x-auto">

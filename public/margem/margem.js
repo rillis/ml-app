@@ -537,8 +537,13 @@ function renderClonar() {
     const busca = $('#buscaClonar').value.trim().toUpperCase();
     const falta = $('#faltaClonar').value, status = $('#statusClonar').value;
     const todas = p ? p.linhas : [];
+    // última tentativa de criar de cada anúncio (o histórico vem do mais novo para o mais antigo)
+    const ultimaTentativa = new Map();
+    for (const h of clonar.historico || []) if (!ultimaTentativa.has(h.original)) ultimaTentativa.set(h.original, h);
+    const erroDe = l => { const h = ultimaTentativa.get(l.codigo); return h && h.status === 'erro' ? h : null; };
     const lista = todas.filter(l => (!busca || `${l.codigo} ${l.sku} ${l.titulo}`.toUpperCase().includes(busca))
-        && (!falta || l.falta === falta) && (!status || l.status === status));
+        && (!falta || l.falta === falta)
+        && (!status || (status === 'erro' ? erroDe(l) : l.status === status)));
     $('#contagemClonar').textContent = p ? (lista.length === todas.length ? `(${todas.length})` : `(${lista.length} de ${todas.length})`) : '';
     $('#tabelaClonar').innerHTML = lista.length ? lista.map(l => {
         const m = daMargem.get(l.codigo);
@@ -547,6 +552,8 @@ function renderClonar() {
             : pilula(m.situacao === 'gratis' ? 'grátis' : pct(m.margem, 2), COR_MARGEM[m.situacao]);
         const pausado = l.status !== 'active' ? pilula(STATUS[l.status] || l.status, 'border-gray-600 text-gray-400') : '';
         const gtinRuim = l.gtin && !l.gtin.corrigido;
+        const erro = erroDe(l);
+        const erroPilula = erro ? `<span title="${esc(`${quando(erro.inicio)}: ${erro.erro || ''}`)}">${pilula('Erro ao criar', 'bg-red-900/60 text-red-200 border-red-500/40')}</span>` : '';
         const gtinTitulo = l.gtin ? `GTIN ${l.gtin.codigo} também em: ` + l.gtin.outros.map(o => `${o.sku} (${o.codigo})`).join(', ') : '';
         const gtinPilula = !l.gtin ? '' : gtinRuim
             ? `<span title="${esc(gtinTitulo)}">${pilula('GTIN duplicado', 'bg-red-900/60 text-red-200 border-red-500/40')}</span>`
@@ -557,7 +564,7 @@ function renderClonar() {
         return `<tr class="border-t border-gray-700/60 align-top">
             <td class="py-2 pr-2">${gtinRuim ? '' : `<input type="checkbox" data-marcar="${esc(l.codigo)}" ${marcadosClonar.has(l.codigo) ? 'checked' : ''} class="w-4 h-4 mt-1 accent-blue-500 cursor-pointer" aria-label="Marcar ${esc(l.sku || l.codigo)}">`}</td>
             <td class="py-2 pr-3 max-w-[13rem] sm:max-w-md">
-                <div class="flex flex-wrap items-center gap-2"><span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>${etiquetas(l)}${pausado}${l.catalogo ? pilula('catálogo', 'border-gray-600 text-gray-400') : ''}${gtinPilula}</div>
+                <div class="flex flex-wrap items-center gap-2"><span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>${etiquetas(l)}${pausado}${l.catalogo ? pilula('catálogo', 'border-gray-600 text-gray-400') : ''}${gtinPilula}${erroPilula}</div>
                 <div class="text-xs truncate">${codigoAnuncio(l.codigo)}<span class="text-gray-500" title="${esc(l.titulo)}"> · ${esc(l.titulo)}</span></div>
             </td>
             <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap">${brl(l.preco)}</td>
