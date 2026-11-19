@@ -60,6 +60,7 @@ $rotas = [
     'planilhas'       => ['GET', '/api/planilhas/'],
     'config'          => ['POST', '/api/config'],
     'simular'         => ['POST', '/api/simular'],
+    'frete_divergente' => ['GET', '/api/frete-divergente'],
     'clonar'          => ['GET', '/api/clonar'],
     'clonar_andamento' => ['GET', '/api/clonar/andamento'],
     'clonar_gtin'     => ['GET', '/api/clonar/gtin'],

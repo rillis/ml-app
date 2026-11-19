@@ -21,6 +21,7 @@ let estado = null;          // /api/estado
 let margem = null;          // última planilha de custo (json)
 let skus = null;            // último comparador (json)
 let clonar = null;          // anúncios sem par + histórico (json)
+let divergentes = new Map(); // código -> frete/adc que o painel do ML cobra (data/frete-divergente.json)
 const marcadosClonar = new Set();  // códigos marcados para criar em lote
 const MAX_CLONAR = 20;
 let ordem = { campo: 'dmeta', dir: -1 };  // padrão: mais longe da meta primeiro
@@ -205,7 +206,9 @@ function situacao(l) {
 
 async function carregarMargem() {
     try {
-        margem = (await api('margem')).resultado;
+        const [m, d] = await Promise.all([api('margem'), api('frete_divergente').catch(() => null)]);
+        margem = m.resultado;
+        if (d) divergentes = new Map(d.anuncios.map(x => [x.codigo, x]));
     } catch (e) {
         ML.toast(e.message, 'erro');
         return;
@@ -320,7 +323,7 @@ function renderTabelaMargem() {
         return `<tr class="border-t border-gray-700/60 align-top">
             <td class="py-2 pr-2 sm:pr-3 max-w-[11rem] sm:max-w-sm">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>${etiquetas(l)}${status}<button type="button" data-editar="${esc(l.codigo)}" class="job text-xs px-1 rounded text-gray-500 hover:text-blue-300 hover:bg-gray-700 disabled:opacity-40" ${jobRodando ? 'disabled' : ''} title="Editar preço, tarifa, frete e adc à mão" aria-label="Editar ${esc(l.sku || l.codigo)}">✏️</button>
+                    <span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>${etiquetas(l)}${status}${iconeDivergente(l)}<button type="button" data-editar="${esc(l.codigo)}" class="job text-xs px-1 rounded text-gray-500 hover:text-blue-300 hover:bg-gray-700 disabled:opacity-40" ${jobRodando ? 'disabled' : ''} title="Editar preço, tarifa, frete e adc à mão" aria-label="Editar ${esc(l.sku || l.codigo)}">✏️</button>
                 </div>
                 <div class="text-xs truncate">${codigoAnuncio(l.codigo)}<span class="text-gray-500" title="${esc(l.titulo)}"> · ${esc(l.titulo)}</span></div>
                 ${l.situacao === 'sem' ? `<div class="text-xs text-red-300">${esc(l.como)}</div>` : ''}
@@ -742,6 +745,24 @@ function fecharPlanoGtin() {
     const m = $('#modalGtin');
     m.classList.add('hidden');
     m.classList.remove('flex');
+}
+
+// ----- frete/adc divergente: o painel do ML usa medidas próprias que a API não mostra (só aviso visual)
+
+function iconeDivergente(l) {
+    const d = divergentes.get(l.codigo);
+    if (!d) return '';
+    const campo = d.campo === 'adc' ? 'adc' : 'frete';
+    const nome = campo === 'adc' ? 'Adc' : 'Frete';
+    const atual = l[campo];
+    const corrigido = atual != null && Math.abs(atual - d.painel) < 0.005;
+    const medida = d.medida_ml ? ` (${d.medida_ml})` : '';  // "medidas próprias (39x34x17 cm, 3,84 kg)"
+    const texto = corrigido
+        ? `${nome} corrigido à mão: ${brl(atual)}, o valor do painel do ML, que usa medidas próprias${medida}. A próxima busca desfaz e volta o valor da API.`
+        : `${nome} pode estar errado: o painel do ML usa medidas próprias${medida} e cobra ${brl(d.painel)}; a API traz ${brl(atual ?? d.api)}. Corrija com ✏️.`;
+    const extra = [d.obs, d.conferido ? `Conferido em ${d.conferido.split('-').reverse().join('/')}.` : ''].filter(Boolean).join(' ');
+    const cor = corrigido ? 'border-gray-500 text-gray-400' : 'border-amber-400 text-amber-300 bg-amber-900/30';
+    return `<span data-dica="${esc(texto + (extra ? '\n' + extra : ''))}" tabindex="0" aria-label="${esc(texto)}" class="inline-flex items-center justify-center w-4 h-4 rounded-full border text-[10px] font-bold italic font-serif cursor-help ${cor}">i</span>`;
 }
 
 // ----- edição à mão de um anúncio (aba Margem)
