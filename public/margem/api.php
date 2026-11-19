@@ -60,6 +60,9 @@ $rotas = [
     'planilhas'       => ['GET', '/api/planilhas/'],
     'config'          => ['POST', '/api/config'],
     'simular'         => ['POST', '/api/simular'],
+    'clonar'          => ['GET', '/api/clonar'],
+    'clonar_andamento' => ['GET', '/api/clonar/andamento'],
+    'clonar_gtin'     => ['GET', '/api/clonar/gtin'],
     'tabelas'         => ['GET', '/api/tabelas'],
     'trocar_tabela'   => ['POST', '/api/tabelas/', 'arquivo'],
     'envio'           => ['POST', '/api/envio', 'arquivo'],
@@ -86,6 +89,16 @@ if ($r === 'planilhas') {
         exit;
     }
     $caminho .= $modulo;
+}
+if ($r === 'clonar_gtin') {
+    // só um código de anúncio MLB passa adiante
+    $item = strtoupper(trim((string) ($_GET['item'] ?? '')));
+    if (!preg_match('/^MLB\d+$/', $item)) {
+        http_response_code(400);
+        echo json_encode(['erro' => 'Anúncio inválido']);
+        exit;
+    }
+    $caminho .= '?item=' . $item;
 }
 if ($r === 'trocar_tabela') {
     if (!in_array($nome, $tabelas, true)) {

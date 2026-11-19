@@ -14,12 +14,15 @@ const codigoAnuncio = codigo => `<button type="button" data-copiar="${esc(codigo
 const urlPlanilha =(modulo, nome) => `api.php?r=arquivo&modulo=${modulo}&nome=${encodeURIComponent(nome)}`;
 
 const LIMITE_LINHAS = 300;
-const NOME_TAREFA = { atualizar: 'Atualização das margens', recalcular: 'Recálculo da margem', teste: 'Teste da margem', parcial: 'Atualização de alguns anúncios', skus: 'Comparação de SKUs' };
+const NOME_TAREFA = { atualizar: 'Atualização das margens', recalcular: 'Recálculo da margem', teste: 'Teste da margem', parcial: 'Atualização de alguns anúncios', skus: 'Comparação de SKUs', pares: 'Busca de anúncios sem par', clonar: 'Criação da opção de venda', gtin: 'Correção do GTIN duplicado' };
 const STATUS = { active: 'ativo', paused: 'pausado', closed: 'encerrado', under_review: 'em revisão', inactive: 'inativo' };
 
 let estado = null;          // /api/estado
 let margem = null;          // última planilha de custo (json)
 let skus = null;            // último comparador (json)
+let clonar = null;          // anúncios sem par + histórico (json)
+const marcadosClonar = new Set();  // códigos marcados para criar em lote
+const MAX_CLONAR = 20;
 let ordem = { campo: 'dmeta', dir: -1 };  // padrão: mais longe da meta primeiro
 let mostrarTodosMargem = false;
 let pollJob = null;
@@ -54,6 +57,7 @@ function abrirAba(aba) {
     if (history.replaceState) history.replaceState(null, '', '#' + aba);
     if (aba === 'tabelas') carregarTabelas();
     if (aba === 'simulador') $('#simSku').focus();
+    if (aba === 'clonar') carregarClonar();
 }
 
 // ===================================================================== estado geral
@@ -83,6 +87,7 @@ function mostrarJob(job) {
     const painel = $('#painelJob');
     jobRodando = !!job && job.estado === 'rodando';
     $$('.job').forEach(b => { b.disabled = jobRodando; });
+    if (clonar) atualizarMarcados();  // "Criar marcados" só com algo marcado
     if (!job || (!jobRodando && job.visto)) {
         painel.classList.add('hidden');
         return;
@@ -116,6 +121,7 @@ function mostrarJob(job) {
     const cores = { ok: 'border-emerald-500/50', erro: 'border-red-500/50', parado: 'border-amber-500/50' };
     const icone = { ok: '✅', erro: '❌', parado: '⏸️' }[job.estado] || '';
     const modulo = job.tipo === 'skus' ? 'skus' : 'margem';
+    // criação da opção de venda: o resumo do loop fica no histórico da aba Clonar; o log mostra o que aconteceu
     painel.className = `bg-gray-800 border ${cores[job.estado] || 'border-gray-700'} rounded-xl p-4 sm:p-5 mb-6`;
     painel.innerHTML = `
         <div class="flex flex-wrap justify-between items-start gap-3">
@@ -129,7 +135,7 @@ function mostrarJob(job) {
                 <button type="button" id="btnVisto" class="${CLASSE_BOTAO} text-sm">Ok</button>
             </div>
         </div>
-        ${job.estado !== 'ok' ? log : ''}`;
+        ${job.estado !== 'ok' || ['clonar', 'gtin'].includes(job.tipo) ? log : ''}`;
     $('#btnVisto').addEventListener('click', async () => {
         await postJson('visto').catch(() => null);
         painel.classList.add('hidden');
@@ -146,6 +152,7 @@ function acompanharJob() {
             return; // falha passageira: tenta de novo no próximo ciclo
         }
         mostrarJob(job);
+        if (job && job.tipo === 'clonar') await mostrarModalClonar(job);
         if (!job || job.estado !== 'rodando') {
             clearInterval(pollJob);
             pollJob = null;
@@ -162,6 +169,7 @@ async function iniciarJob(dados) {
     try {
         const { job } = await postJson('iniciar', dados);
         mostrarJob(job);
+        if (job.tipo === 'clonar') await mostrarModalClonar(job);
         acompanharJob();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (e) {
@@ -179,6 +187,8 @@ async function recarregarTudo(tipo) {
     await carregarEstado().catch(e => ML.toast(e.message, 'erro'));
     if (tipo === 'skus') await carregarSkus();
     else if (tipo === 'teste') await carregarTeste();
+    else if (tipo === 'pares' || tipo === 'gtin') await carregarClonar();
+    else if (tipo === 'clonar') await Promise.all([carregarClonar(), carregarMargem()]);
     else await carregarMargem();
     if ($('#avancado').open) carregarPlanilhas();
 }
@@ -210,6 +220,7 @@ async function carregarMargem() {
         });
     }
     renderMargem();
+    renderClonar();  // a aba Clonar mostra a margem do original
 }
 
 function renderMargem() {
@@ -491,6 +502,246 @@ async function trocarTabela(nome, input) {
     }
 }
 
+// ===================================================================== clonar
+
+async function carregarClonar() {
+    try {
+        clonar = await api('clonar');
+    } catch (e) {
+        ML.toast(e.message, 'erro');
+        return;
+    }
+    renderClonar();
+}
+
+const NOME_SITUACAO_CLONE = {
+    ok: ['cravado', 'bg-emerald-900/40 text-emerald-200 border-emerald-500/30'],
+    fora: ['sem cravar', 'bg-amber-900/50 text-amber-200 border-amber-500/40'],
+    ajustando: ['ajustando', 'border-blue-500/50 text-blue-200'],
+    criando: ['criando', 'border-blue-500/50 text-blue-200'],
+    parado: ['parado', 'bg-amber-900/50 text-amber-200 border-amber-500/40'],
+    erro: ['erro', 'bg-red-900/60 text-red-200 border-red-500/40'],
+};
+
+function renderClonar() {
+    if (!clonar) return;
+    const p = clonar.pares;
+    $('#infoClonar').innerHTML = p
+        ? `Busca de ${quando(p.gerado)} · ${p.analisados.toLocaleString('pt-BR')} anúncios ativos e pausados` + (p.teste ? ' · <span class="text-amber-300">teste com alguns anúncios</span>' : '')
+            + (p.sem_produto ? ` · ${p.sem_produto} sem user product (modelo antigo) ficaram de fora` : '')
+            + (p.so_gratis ? ` · ${p.so_gratis} só com itens grátis ficaram de fora` : '')
+            + (p.gtin_duplicado ? ` · <span class="text-red-300">${p.gtin_duplicado} com GTIN duplicado</span>` : '')
+        : 'Ainda não buscou: use Buscar anúncios sem par.';
+    // margem do original na última planilha, quando ele estiver lá
+    const daMargem = new Map((margem?.linhas || []).map(l => [l.codigo, l]));
+    const busca = $('#buscaClonar').value.trim().toUpperCase();
+    const falta = $('#faltaClonar').value, status = $('#statusClonar').value;
+    const todas = p ? p.linhas : [];
+    const lista = todas.filter(l => (!busca || `${l.codigo} ${l.sku} ${l.titulo}`.toUpperCase().includes(busca))
+        && (!falta || l.falta === falta) && (!status || l.status === status));
+    $('#contagemClonar').textContent = p ? (lista.length === todas.length ? `(${todas.length})` : `(${lista.length} de ${todas.length})`) : '';
+    $('#tabelaClonar').innerHTML = lista.length ? lista.map(l => {
+        const m = daMargem.get(l.codigo);
+        const margemCel = !m ? '<span class="text-gray-500">—</span>'
+            : m.situacao === 'sem' ? '<span class="text-red-300 text-xs">sem custo</span>'
+            : pilula(m.situacao === 'gratis' ? 'grátis' : pct(m.margem, 2), COR_MARGEM[m.situacao]);
+        const pausado = l.status !== 'active' ? pilula(STATUS[l.status] || l.status, 'border-gray-600 text-gray-400') : '';
+        const gtinRuim = l.gtin && !l.gtin.corrigido;
+        const gtinTitulo = l.gtin ? `GTIN ${l.gtin.codigo} também em: ` + l.gtin.outros.map(o => `${o.sku} (${o.codigo})`).join(', ') : '';
+        const gtinPilula = !l.gtin ? '' : gtinRuim
+            ? `<span title="${esc(gtinTitulo)}">${pilula('GTIN duplicado', 'bg-red-900/60 text-red-200 border-red-500/40')}</span>`
+            : `<span title="${esc(gtinTitulo)}">${pilula('GTIN corrigido', 'border-emerald-500/40 text-emerald-300')}</span>`;
+        const acao = gtinRuim
+            ? `<button type="button" data-gtin="${esc(l.codigo)}" class="${CLASSE_BOTAO} text-sm job whitespace-nowrap" ${jobRodando ? 'disabled' : ''} title="${esc(gtinTitulo)}">🔧 Corrigir GTIN</button>`
+            : `<button type="button" data-clonar="${esc(l.codigo)}" class="${CLASSE_BOTAO} text-sm job whitespace-nowrap" ${jobRodando ? 'disabled' : ''}>➕ ${esc(l.falta)}</button>`;
+        return `<tr class="border-t border-gray-700/60 align-top">
+            <td class="py-2 pr-2">${gtinRuim ? '' : `<input type="checkbox" data-marcar="${esc(l.codigo)}" ${marcadosClonar.has(l.codigo) ? 'checked' : ''} class="w-4 h-4 mt-1 accent-blue-500 cursor-pointer" aria-label="Marcar ${esc(l.sku || l.codigo)}">`}</td>
+            <td class="py-2 pr-3 max-w-[13rem] sm:max-w-md">
+                <div class="flex flex-wrap items-center gap-2"><span class="font-semibold text-gray-100 break-all sm:break-normal">${l.sku ? esc(l.sku) : '<span class="text-gray-500">(sem SKU)</span>'}</span>${etiquetas(l)}${pausado}${l.catalogo ? pilula('catálogo', 'border-gray-600 text-gray-400') : ''}${gtinPilula}</div>
+                <div class="text-xs truncate">${codigoAnuncio(l.codigo)}<span class="text-gray-500" title="${esc(l.titulo)}"> · ${esc(l.titulo)}</span></div>
+            </td>
+            <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap">${brl(l.preco)}</td>
+            <td class="py-2 px-2 sm:px-3 text-right">${margemCel}</td>
+            <td class="py-2 pl-2 sm:pl-3 text-right">${acao}</td>
+        </tr>`;
+    }).join('') : `<tr><td colspan="5" class="py-6 text-center text-gray-500">${p ? 'Nenhum anúncio sem par com esses filtros.' : 'Use Buscar anúncios sem par.'}</td></tr>`;
+    // marcados que saíram da lista (já clonados) deixam de contar
+    const existentes = new Set(todas.map(l => l.codigo));
+    for (const c of [...marcadosClonar]) if (!existentes.has(c)) marcadosClonar.delete(c);
+    const marcaveis = lista.filter(l => !(l.gtin && !l.gtin.corrigido));
+    $('#marcarClonar').checked = marcaveis.length > 0 && marcaveis.slice(0, MAX_CLONAR).every(l => marcadosClonar.has(l.codigo));
+    atualizarMarcados();
+
+    const hist = clonar.historico || [];
+    $('#historicoClonar').innerHTML = hist.length ? hist.map(h => {
+        const [nome, cor] = NOME_SITUACAO_CLONE[h.status] || [h.status, 'border-gray-600 text-gray-400'];
+        const avisos = h.avisos || [];
+        return `<tr class="border-t border-gray-700/60 align-top">
+            <td class="py-2 pr-3">
+                <div class="flex flex-wrap items-center gap-2"><span class="font-semibold text-gray-100">${esc(h.sku || '')}</span>
+                ${h.tipo_original ? pilula(h.tipo_original, COR_TIPO[h.tipo_original] || '') : ''}<span class="text-gray-500">→</span>${h.tipo_novo ? pilula(h.tipo_novo, COR_TIPO[h.tipo_novo] || '') : ''}</div>
+                <div class="text-xs">${codigoAnuncio(h.original)}${h.novo ? ` <span class="text-gray-500">→</span> ${codigoAnuncio(h.novo)}` : ''} <span class="text-gray-500">· ${quando(h.inicio)}</span></div>
+                ${avisos.length ? `<ul class="text-xs text-amber-300 mt-1 list-disc pl-4">${avisos.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+                ${h.erro ? `<p class="text-xs text-red-300 mt-1">${esc(h.erro)}</p>` : ''}
+            </td>
+            <td class="py-2 px-2 sm:px-3 text-right tabular-nums whitespace-nowrap">${h.preco_final != null ? brl(h.preco_final) : brl(h.preco_inicial)}${h.preco_inicial != null && h.preco_final != null && Math.abs(h.preco_final - h.preco_inicial) >= 0.005 ? `<div class="text-[11px] text-gray-500">criado a ${brl(h.preco_inicial)}</div>` : ''}</td>
+            <td class="py-2 px-2 sm:px-3 text-right tabular-nums">${h.margem_final != null ? pct(h.margem_final, 2) : '—'}</td>
+            <td class="py-2 pl-2 sm:pl-3 text-right">${pilula(nome, cor)}</td>
+        </tr>`;
+    }).join('') : '<tr><td colspan="4" class="py-6 text-center text-gray-500">Nenhuma opção de venda criada ainda.</td></tr>';
+}
+
+function atualizarMarcados() {
+    const n = marcadosClonar.size;
+    $('#btnClonarMarcados').textContent = n ? `➕ Criar marcados (${n})` : '➕ Criar marcados';
+    $('#btnClonarMarcados').disabled = !n || jobRodando;
+}
+
+async function criarMarcados() {
+    const linhas = (clonar?.pares?.linhas || []).filter(l => marcadosClonar.has(l.codigo));
+    if (!linhas.length) return;
+    const faltas = ['Premium', 'Clássico'].map(t => [t, linhas.filter(l => l.falta === t).length]).filter(([, n]) => n)
+        .map(([t, n]) => `${n} ${t}`).join(' e ');
+    const ok = await ML.confirmar(`Criar ${faltas} no ML (${linhas.length} anúncio${linhas.length > 1 ? 's' : ''})? Cria todos pelo preço da margem alvo e depois confere todos a cada 10 s até cravar a margem.`,
+        { titulo: 'Criar marcados', textoConfirmar: 'Criar' });
+    if (!ok) return;
+    const itens = linhas.map(l => l.codigo);
+    marcadosClonar.clear();
+    iniciarJob({ tipo: 'clonar', itens });
+}
+
+// ----- modal de andamento da criação (um anúncio por linha: fila, girando, ✓ ou ✕)
+
+const ETAPA_CLONE = { fila: 'na fila', criando: 'criando', conferindo: 'conferindo', ok: 'cravado', fora: 'sem cravar', erro: 'erro', parado: 'parado' };
+
+function iconeClone(etapa) {
+    const base = 'w-5 h-5 rounded-full inline-flex items-center justify-center text-xs font-bold shrink-0';
+    if (etapa === 'ok') return `<span class="${base} bg-emerald-500 text-white" aria-hidden="true">✓</span>`;
+    if (etapa === 'erro' || etapa === 'parado') return `<span class="${base} bg-red-500 text-white" aria-hidden="true">✕</span>`;
+    if (etapa === 'fora') return `<span class="${base} bg-amber-500 text-gray-900" aria-hidden="true">!</span>`;
+    if (etapa === 'fila') return `<span class="${base} border-2 border-dashed border-gray-600" aria-hidden="true"></span>`;
+    return `<span class="${base} border-[3px] border-blue-900 border-t-blue-400 animate-spin" aria-hidden="true"></span>`;
+}
+
+function abrirModalClonar() {
+    const m = $('#modalClonar');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+}
+
+async function mostrarModalClonar(job) {
+    if (!job || job.tipo !== 'clonar') return;
+    let andamento = null;
+    try { andamento = (await api('clonar_andamento')).andamento; } catch (e) { /* tenta no próximo ciclo */ }
+    const codigos = (job.opcoes?.itens || job.opcoes?.item || '').split(',').filter(Boolean);
+    // andamento de uma criação anterior: mostra os desta ainda na fila
+    if (!andamento || (andamento.inicio || '') < (job.inicio || '')) andamento = null;
+    const daLista = new Map((clonar?.pares?.linhas || []).map(l => [l.codigo, l]));
+    const itens = andamento ? andamento.itens : codigos.map(c => ({ original: c, etapa: 'fila' }));
+    const rodando = job.estado === 'rodando';
+    if (!rodando) itens.forEach(i => { if (['fila', 'criando', 'conferindo'].includes(i.etapa)) i.etapa = 'parado'; });
+
+    const total = itens.length;
+    const conta = e => itens.filter(i => i.etapa === e).length;
+    const prontos = itens.filter(i => ['ok', 'fora', 'erro', 'parado'].includes(i.etapa)).length;
+    const leitura = Math.max(0, ...itens.filter(i => i.etapa === 'conferindo').map(i => i.rodada || 0));
+    let titulo;
+    if (!rodando) titulo = job.estado === 'ok' ? `Pronto: ${conta('ok')} de ${total} cravado${conta('ok') !== 1 ? 's' : ''}` : (job.estado === 'parado' ? 'Parado' : 'Terminou com erro');
+    else if (job.passo > 1) titulo = 'Atualizando a planilha de margem…';
+    else if (conta('fila') || conta('criando')) titulo = `Criando ${total - conta('fila')}/${total}…`;
+    else titulo = `Conferindo a margem${leitura ? ` · leitura ${leitura} de ${andamento?.rodadas || 10}` : ''}…`;
+    $('#clonarTitulo').textContent = titulo;
+    const min = Math.floor((Date.now() - new Date(job.inicio)) / 60000);
+    $('#clonarSub').textContent = `${prontos} de ${total} terminado${total !== 1 ? 's' : ''} · iniciado às ${new Date(job.inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` + (min ? ` · ${min} min` : '');
+
+    $('#clonarLista').innerHTML = itens.map(i => {
+        const l = daLista.get(i.original) || {};
+        const sku = i.sku || l.sku || i.original;
+        const tipo = i.tipo_novo || l.falta || '';
+        const valores = i.preco != null && i.etapa !== 'erro'
+            ? ` · ${brl(i.preco)}${i.margem != null ? ` · ${pct(i.margem, 2)}` : ''}` : '';
+        const rodada = i.etapa === 'conferindo' && i.rodada ? ` (leitura ${i.rodada})` : '';
+        const cor = { ok: 'text-emerald-300', fora: 'text-amber-300', erro: 'text-red-300', parado: 'text-red-300' }[i.etapa] || 'text-gray-400';
+        return `<li class="border border-gray-700 rounded-lg px-3 py-2">
+            <div class="flex items-center gap-3">
+                ${iconeClone(i.etapa)}
+                <div class="flex-1 min-w-0">
+                    <div class="flex flex-wrap items-center gap-2"><span class="font-semibold text-gray-100">${esc(sku)}</span>${tipo ? pilula(tipo, COR_TIPO[tipo] || '') : ''}</div>
+                    <div class="text-xs text-gray-400">${esc(i.original)}${i.novo ? ` → ${codigoAnuncio(i.novo)}` : ''}</div>
+                </div>
+                <span class="text-sm ${cor} text-right whitespace-nowrap">${esc(ETAPA_CLONE[i.etapa] || i.etapa)}${rodada}<span class="tabular-nums">${valores}</span></span>
+            </div>
+            ${i.erro ? `<div class="text-sm text-red-400 mt-1 ml-8">${esc(i.erro)}</div>` : ''}
+            ${(i.avisos || []).map(a => `<div class="text-xs text-amber-300 mt-1 ml-8">${esc(a)}</div>`).join('')}
+        </li>`;
+    }).join('');
+    $('#clonarRodape').textContent = rodando ? 'Pode fechar esta aba do navegador: a criação continua no servidor.' : (job.estado === 'ok' ? '' : (job.mensagem || ''));
+    $('#btnClonarFechar').classList.toggle('hidden', rodando);
+    abrirModalClonar();
+}
+
+async function fecharModalClonar() {
+    const m = $('#modalClonar');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+    await postJson('visto').catch(() => null);
+    $('#painelJob').classList.add('hidden');
+}
+
+// ----- GTIN duplicado: plano (quem fica e quem perde o GTIN) e correção
+
+let gtinItem = null;
+
+async function abrirPlanoGtin(codigo) {
+    let plano;
+    try {
+        ML.toast('Montando o plano…', 'info');
+        plano = (await api('clonar_gtin&item=' + encodeURIComponent(codigo))).plano;
+    } catch (e) {
+        ML.toast(e.message, 'erro');
+        return;
+    }
+    gtinItem = codigo;
+    $('#gtinTitulo').textContent = `Corrigir GTIN ${plano.gtin}`;
+    $('#gtinTexto').textContent = plano.texto;
+    $('#gtinLista').innerHTML = plano.grupos.map(g => {
+        const fica = g.fica, perde = plano.decidido && !g.fica;
+        const icone = fica ? '<span class="w-5 h-5 rounded-full inline-flex items-center justify-center text-xs font-bold bg-emerald-500 text-white shrink-0">✓</span>'
+            : perde ? '<span class="w-5 h-5 rounded-full inline-flex items-center justify-center text-xs font-bold bg-red-500 text-white shrink-0">✕</span>'
+            : '<span class="w-5 h-5 rounded-full inline-flex items-center justify-center text-xs font-bold border-2 border-dashed border-gray-600 shrink-0"></span>';
+        const anuncios = g.anuncios.map(a => `${codigoAnuncio(a.codigo)}${a.catalogo ? ' <span class="text-gray-500">(catálogo)</span>' : ''}`).join(' · ');
+        return `<li class="border border-gray-700 rounded-lg px-3 py-2">
+            <div class="flex items-center gap-3">${icone}
+                <div class="flex-1 min-w-0">
+                    <div class="flex flex-wrap items-center gap-2"><span class="font-semibold text-gray-100">${esc(g.sku || '(sem SKU)')}</span>${g.kit ? pilula('kit', 'border-gray-600 text-gray-400') : ''}${g.alvo ? pilula('o que você quer clonar', 'border-blue-500/50 text-blue-200') : ''}</div>
+                    <div class="text-xs text-gray-400">${anuncios}</div>
+                    <div class="text-xs text-gray-500">${esc(g.dominio || '')} · categoria ${esc(g.categoria || '')}</div>
+                </div>
+                <span class="text-sm text-right ${fica ? 'text-emerald-300' : perde ? 'text-red-300' : 'text-gray-400'}">${fica ? 'fica com o GTIN' : perde ? `perde o GTIN<div class="text-xs text-gray-400">${esc(g.motivo)}</div>` : ''}</span>
+            </div>
+        </li>`;
+    }).join('');
+    $('#btnGtinCorrigir').classList.toggle('hidden', !plano.decidido);
+    $('#btnGtinCorrigir').disabled = jobRodando;
+    const m = $('#modalGtin');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+}
+
+function fecharPlanoGtin() {
+    const m = $('#modalGtin');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+}
+
+async function criarOpcao(codigo) {
+    const l = clonar?.pares?.linhas.find(x => x.codigo === codigo);
+    if (!l) return;
+    const ok = await ML.confirmar(`Criar o ${l.falta} de ${l.sku || codigo} (${codigo}) no ML? O anúncio novo entra ativo, no envio normal, pelo preço da margem alvo; depois o preço é conferido por alguns minutos até cravar a margem.`,
+        { titulo: `Criar ${l.falta}`, textoConfirmar: 'Criar' });
+    if (ok) iniciarJob({ tipo: 'clonar', item: codigo });
+}
+
 // ===================================================================== simulador
 
 // Preço sugerido de um SKU com taxa, frete e adc digitados; mostra o custo de cada parte do SKU
@@ -614,6 +865,45 @@ function ligarEventos() {
     });
     $('#btnMetasCancelar').addEventListener('click', () => $('#formMetas').classList.add('hidden'));
     $('#formSimular').addEventListener('submit', e => { e.preventDefault(); simular(); });
+    $('#btnPares').addEventListener('click', () => iniciarJob({ tipo: 'pares' }));
+    ['#buscaClonar', '#faltaClonar', '#statusClonar'].forEach(s => $(s).addEventListener('input', renderClonar));
+    $('#tabelaClonar').addEventListener('click', e => {
+        const b = e.target.closest('[data-clonar]');
+        if (b && !b.disabled) criarOpcao(b.dataset.clonar);
+        const g = e.target.closest('[data-gtin]');
+        if (g && !g.disabled) abrirPlanoGtin(g.dataset.gtin);
+    });
+    $('#tabelaClonar').addEventListener('change', e => {
+        const c = e.target.closest('[data-marcar]');
+        if (!c) return;
+        if (c.checked && marcadosClonar.size >= MAX_CLONAR) {
+            c.checked = false;
+            ML.toast(`Até ${MAX_CLONAR} anúncios por vez.`, 'aviso');
+            return;
+        }
+        if (c.checked) marcadosClonar.add(c.dataset.marcar);
+        else marcadosClonar.delete(c.dataset.marcar);
+        atualizarMarcados();
+    });
+    $('#marcarClonar').addEventListener('change', e => {
+        const visiveis = $$('#tabelaClonar [data-marcar]').map(c => c.dataset.marcar);
+        if (e.target.checked) {
+            for (const c of visiveis) {
+                if (marcadosClonar.size >= MAX_CLONAR) { ML.toast(`Marquei ${MAX_CLONAR}: é o máximo por vez.`, 'aviso'); break; }
+                marcadosClonar.add(c);
+            }
+        } else {
+            for (const c of visiveis) marcadosClonar.delete(c);
+        }
+        renderClonar();
+    });
+    $('#btnClonarMarcados').addEventListener('click', criarMarcados);
+    $('#btnClonarFechar').addEventListener('click', fecharModalClonar);
+    $('#btnGtinCancelar').addEventListener('click', fecharPlanoGtin);
+    $('#btnGtinCorrigir').addEventListener('click', () => {
+        fecharPlanoGtin();
+        if (gtinItem) iniciarJob({ tipo: 'gtin', item: gtinItem });
+    });
     ['#pctTotal', '#pctTaxa'].forEach(c => $(c).addEventListener('input', calcularPct));
     $('#pctResultado').addEventListener('click', async () => {
         const v = $('#pctResultado').textContent;
@@ -624,7 +914,8 @@ function ligarEventos() {
     ['#campoLucro', '#campoGordura', '#campoImposto'].forEach(s => $(s).addEventListener('input', somarMeta));
 
     // Atualizar só alguns anúncios: os códigos MLB colados viram a lista, sem repetir
-    const codigosParcial = () => [...new Set(($('#campoParcial').value.toUpperCase().match(/MLB\d+/g) || []))];
+    // com ou sem MLB: "MLB123", "MLB-123" e "123" viram MLB123
+    const codigosParcial = () => [...new Set([...$('#campoParcial').value.toUpperCase().matchAll(/(?:MLB-?)?(\d{6,})/g)].map(m => 'MLB' + m[1]))];
     $('#btnParcial').addEventListener('click', () => {
         $('#formParcial').classList.toggle('hidden');
         if (!$('#formParcial').classList.contains('hidden')) $('#campoParcial').focus();
@@ -748,7 +1039,7 @@ async function iniciar() {
         ML.toast(e.message, 'erro');
         return;
     }
-    await Promise.all([carregarMargem(), carregarSkus()]);
+    await Promise.all([carregarMargem(), carregarSkus(), carregarClonar()]);
     if (jobRodando) acompanharJob();
 }
 
