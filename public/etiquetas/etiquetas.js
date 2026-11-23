@@ -89,13 +89,15 @@ async function carregarVendas(forcar = false) {
 }
 
 function desenharLista() {
-    const nf = vendas.filter((v) => v.situacao === 'nf_pendente').length;
-    const prontas = vendas.length - nf;
+    const semFiscal = vendas.filter((v) => v.sem_dados_fiscais).length;
+    const nf = vendas.filter((v) => v.situacao === 'nf_pendente').length - semFiscal;
+    const prontas = vendas.length - nf - semFiscal;
     const chip = 'px-3 py-1.5 rounded-full text-sm font-semibold';
-    $('#resumo').replaceChildren(
+    $('#resumo').replaceChildren(...[
         el('span', { class: `${chip} ${COR.nf}` }, `${nf} aguardando NF`),
         el('span', { class: `${chip} ${COR.pronta}` }, prontas === 1 ? '1 pronta para imprimir' : `${prontas} prontas para imprimir`),
-    );
+        semFiscal ? el('span', { class: `${chip} ${COR.erro}` }, `${semFiscal} sem dados fiscais`) : null,
+    ].filter(Boolean));
 
     $('#lista').replaceChildren(...vendas.map((v) => {
         const id = String(v.venda);
