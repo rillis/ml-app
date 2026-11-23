@@ -5,6 +5,7 @@ const $ = (sel) => document.querySelector(sel);
 const brl = (n) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const dataCurta = (iso) => iso ? new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
 const horaCurta = (iso) => iso ? new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+const urlFiscal = (v) => `https://myaccount.mercadolivre.com.br/fiscal-information/order/${(v.pedidos || [])[0] || v.venda}`;
 const urlArquivo = (pasta, nome) => `api.php?r=arquivo&pasta=${encodeURIComponent(pasta)}&nome=${encodeURIComponent(nome)}`;
 
 const ETAPAS = {
@@ -120,7 +121,8 @@ function desenharLista() {
                     `${it.qtd}x `, el('strong', {}, it.sku || '(sem SKU)'), el('span', { class: 'text-gray-400' }, ` — ${it.titulo}`)))),
                 el('div', { class: 'flex flex-wrap items-center gap-2 mt-2' },
                     v.sem_dados_fiscais
-                        ? el('span', { class: `${TAG} ${COR.erro}` }, 'Anúncio sem dados fiscais')
+                        ? [el('span', { class: `${TAG} ${COR.erro}` }, 'Anúncio sem dados fiscais'),
+                            el('a', { class: 'text-xs font-semibold text-red-300 hover:text-red-200 underline', href: urlFiscal(v), target: '_blank', rel: 'noopener' }, 'Corrigir ↗')]
                         : el('span', { class: `${TAG} ${nfPendente ? COR.nf : COR.pronta}` }, nfPendente ? 'Aguardando NF' : 'Pronta para imprimir'),
                     v.b2b ? el('span', { class: `${TAG} ${COR.b2b}` }, 'B2B') : null,
                     v.em_processamento ? el('span', { class: `${TAG} ${COR.proc}` }, 'Em processamento') : null,
