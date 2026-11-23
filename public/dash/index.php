@@ -1,212 +1,117 @@
 <?php
 require __DIR__ . '/../../src/auth.php';
-require __DIR__ . '/../../src/db.php';
-$pdo = ml_db('ml_jrf');
-
-include __DIR__ . '/../../src/dash/posts.php';
-include __DIR__ . '/../../src/dash/boletos.php';
-include __DIR__ . '/../../src/dash/logs.php';
-require __DIR__ . '/../../src/dash/parciais.php';
-
-$filtros = [
-    'todos'       => 'Todos',
-    'vendas'      => 'Vendas',
-    'perguntas'   => 'Perguntas',
-    'mensagens'   => 'Mensagens',
-    'reclamacoes' => 'Reclamações',
-];
+$classeBotao = 'bg-gray-800 border border-gray-700 hover:border-blue-500 text-gray-100 font-semibold py-2 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap';
+$classePrimario = 'bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap';
+$classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl flex flex-col min-h-0';
+$classeTitulo = 'flex items-center justify-between gap-2 px-4 pt-3 pb-2 border-b border-gray-700 flex-shrink-0';
 ?>
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard ML</title>
+    <title>Dash</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <script src="/assets/tailwind.js"></script>
     <style>
-        /* darkmode das scrollbars **/
-        .scrollbar-dark::-webkit-scrollbar {
-            width: 8px;
-        }
-        .scrollbar-dark::-webkit-scrollbar-track {
-            background: #1f2937; /* gray-800 */
-            border-radius: 4px;
-        }
-        .scrollbar-dark::-webkit-scrollbar-thumb {
-            background: #374151; /* gray-700 */
-            border-radius: 4px;
-        }
-        .scrollbar-dark::-webkit-scrollbar-thumb:hover {
-            background: #4b5563; /* gray-600 */
-        }
+        .rolagem { scrollbar-width: thin; scrollbar-color: #374151 transparent; }
+        .rolagem::-webkit-scrollbar { width: 8px; }
+        .rolagem::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        @keyframes chega { from { background-color: rgba(59, 130, 246, .35); } to { background-color: transparent; } }
+        .novo { animation: chega 3s ease-out; }
     </style>
 </head>
-<!-- No computador (md+), h-screen e overflow-hidden travam a altura na janela; no celular a página rola normalmente -->
-<body class="bg-gray-900 text-gray-100 p-4 sm:p-8 font-sans min-h-screen md:h-screen flex flex-col md:overflow-hidden">
+<!-- No computador (lg+) a página ocupa exatamente a janela e cada cartão rola por dentro; no celular a página rola -->
+<body class="bg-gray-900 text-gray-100 p-4 sm:p-8 font-sans min-h-screen lg:h-screen flex flex-col lg:overflow-hidden">
     <?php require __DIR__ . '/../../src/nav.php'; ?>
 
-    <!-- flex-shrink-0 e mb-6 movidos para uma div pai para agrupar o título e o subtítulo -->
-    <div class="mb-6 flex-shrink-0">
-        <h1 class="text-2xl sm:text-3xl font-bold text-gray-100 flex flex-wrap items-center gap-x-3 gap-y-2">Painel de Operações
-            <a href="fila/" class="px-3 py-2 sm:py-1 rounded-lg text-sm font-semibold bg-gray-800 border border-gray-700 text-gray-300 hover:border-blue-500 hover:text-white transition-colors">🔔 Fila do webhook</a>
-        </h1>
-        <p class="text-sm text-gray-400 mt-1">
-            <span id="ultimoEvento"><?= dash_h($lastEventText) ?></span>
-            <span id="statusAtualizacao" class="ml-2 text-gray-500"></span>
+    <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-3 flex-shrink-0">
+        <h1 class="text-2xl font-bold">Painel ao vivo</h1>
+        <p class="text-xs text-gray-400 flex items-center gap-2">
+            <span id="pontoStatus" class="inline-block w-2 h-2 rounded-full bg-gray-500"></span>
+            <span id="statusTexto">Carregando…</span>
         </p>
     </div>
 
-    <!-- flex-1 e min-h-0 fazem o grid ocupar todo o espaço restante e respeitar o limite -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
+    <!-- Indicadores -->
+    <div id="kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4 flex-shrink-0">
+        <?php foreach (['vendas', 'etiquetas', 'perguntas', 'reclamacoes', 'boletos', 'sistema'] as $k): ?>
+            <button type="button" data-kpi="<?= $k ?>" class="text-left bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 hover:border-gray-500 transition-colors min-w-0">
+                <span data-rotulo class="block text-xs text-gray-400 truncate">&nbsp;</span>
+                <span data-valor class="block text-2xl font-bold tabular-nums leading-tight">–</span>
+                <span data-sub class="block text-xs text-gray-400 truncate">&nbsp;</span>
+            </button>
+        <?php endforeach; ?>
+    </div>
 
-        <!-- Coluna 1: Mercado Livre -->
-        <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-lg flex flex-col min-h-0 h-[75vh] md:h-auto">
-            <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2 text-blue-400 flex-shrink-0">Últimos Eventos</h2>
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 min-h-0">
 
-            <div id="filtrosEventos" class="flex flex-wrap gap-2 mb-3 flex-shrink-0" role="group" aria-label="Filtrar eventos por tipo">
-                <?php foreach ($filtros as $chave => $nome): ?>
-                    <button type="button" data-filtro="<?= $chave ?>" aria-pressed="false" class="px-3 py-2 md:py-1 rounded-full text-xs font-semibold transition-colors bg-gray-700 text-gray-300 hover:bg-gray-600">
-                        <?= $nome ?> (<span data-contagem="<?= $chave ?>"><?= (int)$contagemEventos[$chave] ?></span>)
-                    </button>
-                <?php endforeach; ?>
+        <!-- Precisa de você -->
+        <section class="<?= $classeCartao ?> lg:col-span-5 max-h-[80vh] lg:max-h-none">
+            <div class="<?= $classeTitulo ?>">
+                <h2 class="font-semibold text-amber-300">Precisa de você</h2>
+                <button type="button" id="btnAtualizarMl" class="text-xs text-gray-400 hover:text-white" title="Consultar o ML agora">↻ <span id="mlQuando"></span></button>
             </div>
-
-            <ul id="listaEventos" class="space-y-3 flex-1 overflow-y-auto pr-2 scrollbar-dark"><?= dash_html_eventos($posts) ?></ul>
-            <p id="eventosVazio" class="hidden flex-1 text-sm text-gray-500 text-center pt-6">Nenhum evento deste tipo nos últimos 2 dias.</p>
-        </div>
-
-        <!-- Coluna Direita (Dividida: Boletos e Logs) -->
-        <div class="flex flex-col gap-6 min-h-0">
-
-            <!-- Metade Superior: Boletos -->
-            <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-lg flex flex-col flex-1 min-h-0 max-h-[60vh] md:max-h-none">
-                <h2 class="text-xl font-semibold mb-4 border-b border-gray-700 pb-2 text-red-400 flex-shrink-0">Boletos (Próximos 15 dias)</h2>
-
-                <ul id="listaBoletos" class="space-y-3 flex-1 overflow-y-auto pr-2 scrollbar-dark"><?= dash_html_boletos($boletos) ?></ul>
+            <div class="flex-1 overflow-y-auto rolagem px-4 pb-3">
+                <h3 class="text-xs uppercase tracking-wider text-gray-400 mt-3 mb-1 flex justify-between"><span>Perguntas sem resposta</span><span id="perguntasErro" class="normal-case tracking-normal text-amber-400"></span></h3>
+                <ul id="perguntas" class="divide-y divide-gray-700/60"></ul>
+                <h3 class="text-xs uppercase tracking-wider text-gray-400 mt-4 mb-1 flex justify-between"><span>Reclamações abertas</span><span id="reclamacoesErro" class="normal-case tracking-normal text-amber-400"></span></h3>
+                <ul id="reclamacoes" class="divide-y divide-gray-700/60"></ul>
+                <h3 class="text-xs uppercase tracking-wider text-gray-400 mt-4 mb-1 flex justify-between"><span>Etiquetas</span><span id="etiquetasErro" class="normal-case tracking-normal text-amber-400"></span></h3>
+                <div id="etiquetas"></div>
             </div>
+        </section>
 
-            <!-- Metade Inferior: Docker Logs -->
-            <!-- No celular os logs começam recolhidos: o título vira botão para abrir -->
-            <div class="bg-gray-800 p-4 sm:p-6 rounded-lg shadow-lg flex flex-col md:flex-1 min-h-0">
-                <h2 class="text-xl font-semibold border-b border-gray-700 pb-2 text-green-400 flex-shrink-0">
-                    <button type="button" id="alternarLogs" aria-expanded="false" aria-controls="painelLogs" class="w-full flex items-center justify-between gap-3 text-left md:cursor-default py-1 md:py-0">
-                        Logs: ml-jrf
-                        <span class="md:hidden text-sm font-normal text-gray-400" data-rotulo>Mostrar ▾</span>
-                    </button>
-                </h2>
+        <!-- Eventos -->
+        <section class="<?= $classeCartao ?> lg:col-span-4 h-[70vh] lg:h-auto">
+            <div class="<?= $classeTitulo ?>">
+                <h2 class="font-semibold text-blue-400">Eventos <span class="text-xs font-normal text-gray-500">ontem e hoje</span></h2>
+            </div>
+            <div id="filtros" class="flex flex-wrap gap-1.5 px-4 pt-2 pb-1 flex-shrink-0" role="group" aria-label="Filtrar eventos"></div>
+            <ul id="eventos" class="flex-1 overflow-y-auto rolagem px-2 pb-2"></ul>
+        </section>
 
-                <div id="painelLogs" class="hidden md:flex mt-4 h-[60vh] md:h-auto flex-1 overflow-y-auto pr-2 scrollbar-dark bg-gray-900 rounded p-3 text-xs text-gray-300 font-mono flex-col-reverse">
-                    <!-- flex-col-reverse faz o scroll ficar no final automaticamente -->
-                    <pre id="logsJrf" class="whitespace-pre-wrap font-mono"><?= getLogsContent(); ?></pre>
+        <!-- Boletos e sistema -->
+        <div class="lg:col-span-3 flex flex-col gap-4 min-h-0">
+            <section class="<?= $classeCartao ?> flex-1">
+                <div class="<?= $classeTitulo ?>">
+                    <h2 class="font-semibold text-red-400">Boletos <span class="text-xs font-normal text-gray-500">15 dias</span></h2>
+                    <a href="/boletos/" class="text-xs text-gray-400 hover:text-white">abrir ↗</a>
                 </div>
-            </div>
-
+                <ul id="boletos" class="flex-1 overflow-y-auto rolagem px-4 pb-2 divide-y divide-gray-700/60"></ul>
+            </section>
+            <section class="<?= $classeCartao ?> flex-shrink-0">
+                <div class="<?= $classeTitulo ?>">
+                    <h2 class="font-semibold text-emerald-400">Sistema</h2>
+                </div>
+                <div class="px-4 py-3 text-sm space-y-2">
+                    <p id="saude" class="text-gray-300"></p>
+                    <p id="filaResumo" class="text-xs text-gray-400"></p>
+                    <div class="flex gap-2 pt-1">
+                        <button type="button" id="btnFila" class="<?= $classeBotao ?> !py-1.5 !px-3 text-sm flex-1">🔔 Fila</button>
+                        <button type="button" id="btnLogs" class="<?= $classeBotao ?> !py-1.5 !px-3 text-sm flex-1">📜 Logs</button>
+                    </div>
+                </div>
+            </section>
         </div>
+    </div>
 
+    <!-- Modal único: o conteúdo é montado pelo dash.js -->
+    <div id="modal" class="hidden fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm justify-center items-center p-4">
+        <div role="dialog" aria-modal="true" aria-labelledby="modalTitulo" class="bg-gray-800 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div class="flex items-start justify-between gap-3 p-5 pb-3 border-b border-gray-700 flex-shrink-0">
+                <h2 id="modalTitulo" class="text-lg font-bold min-w-0 break-words"></h2>
+                <button type="button" data-fechar class="text-gray-400 hover:text-white text-2xl leading-none px-1" aria-label="Fechar">×</button>
+            </div>
+            <div id="modalCorpo" class="p-5 overflow-y-auto rolagem flex-1 min-h-0"></div>
+            <div id="modalRodape" class="hidden flex flex-wrap justify-end gap-2 p-5 pt-3 border-t border-gray-700 flex-shrink-0"></div>
+        </div>
     </div>
 
     <script>
-    const INTERVALO_MS = 60000;
-    const CHAVE_FILTRO = 'dash.filtroEventos';
-    const CLASSES_FILTRO_ATIVO = ['bg-blue-600', 'text-white', 'hover:bg-blue-500'];
-    const CLASSES_FILTRO_INATIVO = ['bg-gray-700', 'text-gray-300', 'hover:bg-gray-600'];
-    const botoesFiltro = [...document.querySelectorAll('[data-filtro]')];
-    const statusAtualizacao = document.getElementById('statusAtualizacao');
-    let filtroAtual = 'todos';
-    let atualizando = false;
-
-    function lerFiltroSalvo() {
-        try {
-            return localStorage.getItem(CHAVE_FILTRO);
-        } catch (e) {
-            return null;
-        }
-    }
-
-    function salvarFiltro(filtro) {
-        try {
-            localStorage.setItem(CHAVE_FILTRO, filtro);
-        } catch (e) {
-            // Sem armazenamento, o filtro só não é lembrado ao reabrir a página
-        }
-    }
-
-    function aplicarFiltro() {
-        const eventos = [...document.querySelectorAll('#listaEventos [data-categoria]')];
-        let visiveis = 0;
-        eventos.forEach(evento => {
-            const mostrar = filtroAtual === 'todos' || evento.dataset.categoria === filtroAtual;
-            evento.classList.toggle('hidden', !mostrar);
-            if (mostrar) visiveis++;
-        });
-        document.getElementById('listaEventos').classList.toggle('hidden', visiveis === 0);
-        document.getElementById('eventosVazio').classList.toggle('hidden', visiveis > 0);
-
-        botoesFiltro.forEach(botao => {
-            const ativo = botao.dataset.filtro === filtroAtual;
-            botao.setAttribute('aria-pressed', String(ativo));
-            CLASSES_FILTRO_ATIVO.forEach(c => botao.classList.toggle(c, ativo));
-            CLASSES_FILTRO_INATIVO.forEach(c => botao.classList.toggle(c, !ativo));
-        });
-    }
-
-    function escolherFiltro(filtro) {
-        filtroAtual = filtro;
-        salvarFiltro(filtro);
-        aplicarFiltro();
-    }
-
-    function mostrarStatus(texto, falhou = false) {
-        statusAtualizacao.textContent = texto;
-        statusAtualizacao.classList.toggle('text-amber-400', falhou);
-        statusAtualizacao.classList.toggle('text-gray-500', !falhou);
-    }
-
-    // Troca só o conteúdo dos painéis, então a rolagem de cada um é mantida.
-    async function atualizarPainel() {
-        if (atualizando) return;
-        atualizando = true;
-        try {
-            const resposta = await fetch('api.php', { cache: 'no-store' });
-            if (!resposta.ok) throw new Error('HTTP ' + resposta.status);
-            const dados = await resposta.json();
-
-            document.getElementById('ultimoEvento').textContent = dados.ultimoEvento;
-            document.getElementById('listaEventos').innerHTML = dados.eventos;
-            document.getElementById('listaBoletos').innerHTML = dados.boletos;
-            document.getElementById('logsJrf').innerHTML = dados.logs;
-            Object.entries(dados.contagens).forEach(([chave, total]) => {
-                const contagem = document.querySelector(`[data-contagem="${chave}"]`);
-                if (contagem) contagem.textContent = total;
-            });
-            aplicarFiltro();
-            mostrarStatus('· atualizado às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
-        } catch (erro) {
-            console.error(erro);
-            mostrarStatus('· falha ao atualizar, tentando de novo em 1 minuto', true);
-        } finally {
-            atualizando = false;
-        }
-    }
-
-    botoesFiltro.forEach(botao => botao.addEventListener('click', () => escolherFiltro(botao.dataset.filtro)));
-
-    // Logs recolhíveis no celular (no computador o painel fica sempre aberto pelo md:flex)
-    document.getElementById('alternarLogs').addEventListener('click', evento => {
-        if (window.matchMedia('(min-width: 768px)').matches) return;
-        const botao = evento.currentTarget;
-        const aberto = botao.getAttribute('aria-expanded') !== 'true';
-        botao.setAttribute('aria-expanded', String(aberto));
-        document.getElementById('painelLogs').classList.toggle('hidden', !aberto);
-        document.getElementById('painelLogs').classList.toggle('flex', aberto);
-        botao.querySelector('[data-rotulo]').textContent = aberto ? 'Ocultar ▴' : 'Mostrar ▾';
-    });
-    const filtroSalvo = lerFiltroSalvo();
-    if (botoesFiltro.some(b => b.dataset.filtro === filtroSalvo)) filtroAtual = filtroSalvo;
-    aplicarFiltro();
-    setInterval(atualizarPainel, INTERVALO_MS);
+        const CLASSE_BOTAO = <?= json_encode($classeBotao) ?>;
+        const CLASSE_PRIMARIO = <?= json_encode($classePrimario) ?>;
     </script>
+    <script src="dash.js"></script>
 </body>
 </html>

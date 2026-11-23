@@ -1,7 +1,7 @@
 <?php
 // Painel da fila do ml-jrf (tabela ml_jrf.webhook_queue): consultas, ações e HTML.
 // Conteúdo vindo do ML (recursos, erros, notas) sempre passa por dash_h().
-require_once __DIR__ . '/parciais.php';
+require_once __DIR__ . '/banco.php';
 date_default_timezone_set('America/Sao_Paulo');
 
 const FILA_HEALTH_URL = 'http://192.168.15.11:52003/health';

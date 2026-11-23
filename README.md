@@ -8,8 +8,7 @@ PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`
 
 | Caminho | O que faz | Banco |
 |---|---|---|
-| `/dash/` | Últimos eventos do ML (vendas, perguntas, mensagens, reclamações), boletos dos próximos 15 dias e logs do container `ml-jrf` | `ml_jrf`, `ml_boletos` |
-| `/dash/fila/` | Fila do webhook do ml-jrf: pendentes, falhas, botões de reprocessar e descartar | `ml_jrf.webhook_queue` |
+| `/dash/` | Painel ao vivo numa tela só: vendas do dia (contra ontem até a mesma hora), etiquetas aguardando NF ou impressão, perguntas sem resposta (responde num modal, direto no ML), reclamações abertas (as que pedem ação sua em destaque), eventos do webhook de ontem e hoje, boletos dos próximos 15 dias e saúde do ml-jrf. A fila do webhook (reprocessar e descartar) e os logs do `ml-jrf` abrem em modal | `ml_jrf`, `ml_boletos` |
 | `/boletos/` | Cadastro de boletos (com leitura de PDF via pdf.js), vencimento ajustado a feriados, insights. No PC, cada boleto tem um botão que mostra a linha digitável em QR code (qrcode-generator, em `public/boletos/vendor/qrcode`) para ler com o celular e colar no app do banco | `ml_boletos` |
 | `/vendas/` | Vendas do ML copiadas para o banco: comparativo entre períodos (datas livres, padrão mês até hoje; contra o período anterior, o período anterior em dias úteis ou o mesmo período do ano passado), faturamento por mês (Full × normal), acumulado do período, Premium × Clássico, faturamento por dia da semana, cancelamentos por mês, tabela por SKU e anúncios que não existem mais (com os equivalentes de hoje). Canceladas ficam fora das outras visões | `ml_vendas` (esquema em `sql/ml_vendas.sql`) |
 | `/full/` | Estoque dos anúncios no Full e sugestão de envio: quando criar o próximo envio e quanto mandar de cada anúncio, pelo ciclo escolhido | `ml_vendas` (tabelas `full_*`), `ml_estoque` |
@@ -18,6 +17,19 @@ PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`
 | `/etiquetas/` | Vendas aguardando NF e prontas para imprimir; processa em lote (NF-e, DANFEs, etiquetas e mensagem) pelo serviço ml-etiquetas-web, que roda em container próprio. O `api.php` repassa as chamadas para ele (`ETIQUETAS_URL`, padrão `http://192.168.15.11:51015`) | — |
 | `/contas/` | Contas pessoais mensais, leitura de fatura de cartão em PDF, parcelas e insights | `contas_pessoais` (esquema em `sql/contas_pessoais.sql`) |
 | `/home/resumo.php` | JSON para os cards da home (home.rillis.com.br): boletos em aberto por nível e se o mês atual das contas foi salvo | `ml_boletos`, `contas_pessoais` |
+
+## Dash (`/dash/`)
+
+A tela pede ao `api.php` dois blocos separados:
+
+- **Banco** (`?r=banco`, a cada 30 s): eventos, vendas do dia, boletos e a fila do webhook.
+- **ML** (`?r=ml`, a cada 2 min): perguntas sem resposta, reclamações abertas e o resumo das etiquetas (do ml-etiquetas-web). Quando chega um evento novo pelo webhook, a tela pede esse bloco na hora. O resultado fica em cache por 100 s em `/var/lib/ml-app/dash-ml.json`, para várias abas abertas não repetirem as consultas.
+
+Como o `tokens.json` do `ml-jrf` só é lido pelo root, o bloco do ML e a resposta de perguntas rodam pela linha de comando (`src/dash/ml.php`), como o Atualizar de Vendas:
+
+```bash
+docker exec ml-app php /var/www/html/src/dash/ml.php dados --forcar
+```
 
 ## Vendas (`/vendas/`)
 
