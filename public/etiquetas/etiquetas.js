@@ -28,6 +28,7 @@ const COR = {
 };
 
 let vendas = [];
+const bloqueada = (v) => v.em_processamento || v.sem_dados_fiscais;
 const marcadas = new Set();
 let jaCarregou = false;
 let pollJob = null;
@@ -73,7 +74,7 @@ async function carregarVendas(forcar = false) {
         vendas = r.vendas;
         for (const v of vendas) {
             const id = String(v.venda);
-            if (v.em_processamento) marcadas.delete(id);
+            if (bloqueada(v)) marcadas.delete(id);
             else if (!jaCarregou || !anteriores.has(id)) marcadas.add(id); // novas vêm marcadas
         }
         for (const id of [...marcadas]) if (!vendas.some((v) => String(v.venda) === id)) marcadas.delete(id);
@@ -98,12 +99,12 @@ function desenharLista() {
 
     $('#lista').replaceChildren(...vendas.map((v) => {
         const id = String(v.venda);
-        const travada = v.em_processamento;
+        const travada = bloqueada(v);
         const check = el('input', { type: 'checkbox', class: 'w-5 h-5 mt-0.5 accent-blue-500', disabled: travada });
         check.checked = marcadas.has(id) && !travada;
         check.addEventListener('change', () => { check.checked ? marcadas.add(id) : marcadas.delete(id); atualizarBarra(); });
         const nfPendente = v.situacao === 'nf_pendente';
-        const card = el('div', { class: 'bg-gray-800 border border-gray-700 rounded-xl p-4 flex gap-3 ' + (travada ? 'opacity-50' : 'cursor-pointer hover:border-gray-500 transition-colors') },
+        const card = el('div', { class: 'bg-gray-800 border rounded-xl p-4 flex gap-3 ' + (v.em_processamento ? 'border-gray-700 opacity-50' : travada ? 'border-red-900' : 'border-gray-700 cursor-pointer hover:border-gray-500 transition-colors') },
             check,
             el('div', { class: 'flex-1 min-w-0' },
                 el('div', { class: 'flex flex-wrap justify-between gap-x-4 gap-y-1' },
@@ -116,9 +117,11 @@ function desenharLista() {
                 el('div', { class: 'text-sm mt-2 space-y-0.5' }, v.itens.map((it) => el('div', { class: 'break-words' },
                     `${it.qtd}x `, el('strong', {}, it.sku || '(sem SKU)'), el('span', { class: 'text-gray-400' }, ` — ${it.titulo}`)))),
                 el('div', { class: 'flex flex-wrap items-center gap-2 mt-2' },
-                    el('span', { class: `${TAG} ${nfPendente ? COR.nf : COR.pronta}` }, nfPendente ? 'Aguardando NF' : 'Pronta para imprimir'),
+                    v.sem_dados_fiscais
+                        ? el('span', { class: `${TAG} ${COR.erro}` }, 'Anúncio sem dados fiscais')
+                        : el('span', { class: `${TAG} ${nfPendente ? COR.nf : COR.pronta}` }, nfPendente ? 'Aguardando NF' : 'Pronta para imprimir'),
                     v.b2b ? el('span', { class: `${TAG} ${COR.b2b}` }, 'B2B') : null,
-                    travada ? el('span', { class: `${TAG} ${COR.proc}` }, 'Em processamento') : null,
+                    v.em_processamento ? el('span', { class: `${TAG} ${COR.proc}` }, 'Em processamento') : null,
                     el('span', { class: 'text-xs text-gray-500' }, 'vendida ' + horaCurta(v.data)))),
         );
         card.addEventListener('click', (e) => {
@@ -132,7 +135,7 @@ function desenharLista() {
     atualizarBarra();
 }
 
-const selecionaveis = () => vendas.filter((v) => !v.em_processamento);
+const selecionaveis = () => vendas.filter((v) => !bloqueada(v));
 const selecionadas = () => selecionaveis().filter((v) => marcadas.has(String(v.venda)));
 
 function atualizarBarra() {
