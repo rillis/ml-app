@@ -112,20 +112,9 @@ require __DIR__ . '/../../src/boletos/nivel.php';
     </div>
 
     <div id="modalQr" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex justify-center items-center p-4" onclick="if (event.target === this) fecharQr()">
-        <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-2xl w-full max-w-xl relative">
-            <button onclick="fecharQr()" aria-label="Fechar" class="absolute top-3 right-3 w-11 h-11 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-100 hover:bg-gray-700 text-2xl leading-none">&times;</button>
-            <div class="pr-12 mb-5">
-                <h2 id="qrDescricao" class="text-xl font-bold text-gray-100"></h2>
-                <p id="qrInfo" class="text-sm text-gray-400 mt-1"></p>
-            </div>
-            <div class="flex flex-col sm:flex-row items-center gap-6">
-                <div id="qrImagem" class="bg-white rounded-xl p-3 shrink-0"></div>
-                <ol class="list-decimal list-inside space-y-2 text-sm text-gray-400">
-                    <li>Leia o QR com a câmera do celular e copie o texto.</li>
-                    <li>No app do banco, abra Pagar boleto e cole o código.</li>
-                </ol>
-            </div>
-            <p id="qrLinha" class="mt-5 text-center font-mono text-sm text-gray-400 break-all"></p>
+        <div class="bg-gray-800 p-6 pt-14 rounded-2xl border border-gray-700 shadow-2xl relative">
+            <button onclick="fecharQr()" aria-label="Fechar" class="absolute top-2 right-2 w-11 h-11 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-100 hover:bg-gray-700 text-2xl leading-none">&times;</button>
+            <div id="qrImagem" class="bg-white rounded-xl p-3"></div>
         </div>
     </div>
 
@@ -266,10 +255,7 @@ require __DIR__ . '/../../src/boletos/nivel.php';
         const qr = qrcode(0, 'M');
         qr.addData(linha, 'Numeric');
         qr.make();
-        document.getElementById('qrDescricao').textContent = b.descricao;
-        document.getElementById('qrInfo').textContent = `${formatarMoeda(b.valor)} · vence ${formatarDataBR(b.data_vencimento_real)}`;
         document.getElementById('qrImagem').innerHTML = qr.createSvgTag({ cellSize: 7, margin: 4 });
-        document.getElementById('qrLinha').textContent = linha;
         document.getElementById('modalQr').classList.remove('hidden');
     }
 
