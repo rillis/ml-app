@@ -24,6 +24,7 @@ A tela pede ao `api.php` dois blocos separados:
 
 - **Banco** (`?r=banco`, a cada 30 s): eventos, vendas do dia, boletos e a fila do webhook.
 - **ML** (`?r=ml`, a cada 2 min): perguntas sem resposta, reclamações abertas e o resumo das etiquetas (do ml-etiquetas-web). Quando chega um evento novo pelo webhook, a tela pede esse bloco na hora. O resultado fica em cache por 100 s em `/var/lib/ml-app/dash-ml.json`, para várias abas abertas não repetirem as consultas.
+- O card de etiquetas só fica vermelho em dia útil até as 18h; em fim de semana, feriado (tabela `ml_boletos.feriados`) ou depois das 18h fica verde, com o aviso "fora do expediente".
 
 Como o `tokens.json` do `ml-jrf` só é lido pelo root, o bloco do ML e a resposta de perguntas rodam pela linha de comando (`src/dash/ml.php`), como o Atualizar de Vendas:
 

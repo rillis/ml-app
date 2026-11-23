@@ -159,7 +159,11 @@ function desenharKpis() {
         if (e.lista) {
             const total = e.nf + e.prontas + e.sem_fiscal;
             const partes = [e.nf && `${e.nf} NF`, e.prontas && `${e.prontas} imprimir`, e.sem_fiscal && `${e.sem_fiscal} sem fiscal`].filter(Boolean);
-            farol('etiquetas', 'Etiquetas', String(total), partes.join(' · ') || 'nada pendente', total ? 'perigo' : 'ok');
+            // Fora do expediente (fim de semana, feriado ou depois das 18h) o card não fica vermelho
+            const expediente = !banco || banco.expediente;
+            farol('etiquetas', 'Etiquetas', String(total),
+                (partes.join(' · ') || 'nada pendente') + (total && !expediente ? ' · fora do expediente' : ''),
+                total && expediente ? 'perigo' : 'ok');
         } else {
             farol('etiquetas', 'Etiquetas', '?', 'serviço indisponível', 'alerta');
         }

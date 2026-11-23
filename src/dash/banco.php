@@ -152,6 +152,18 @@ function dash_boletos(PDO $pdo): array
     return $boletos;
 }
 
+// Horário de cobrar etiquetas: dia útil (sem fim de semana nem feriado) antes das 18h
+function dash_expediente(PDO $pdo): bool
+{
+    $agora = new DateTime('now', new DateTimeZone(DASH_FUSO));
+    if ((int) $agora->format('N') >= 6 || (int) $agora->format('G') >= 18) {
+        return false;
+    }
+    $feriado = $pdo->prepare("SELECT 1 FROM ml_boletos.feriados WHERE data = ?");
+    $feriado->execute([$agora->format('Y-m-d')]);
+    return !$feriado->fetchColumn();
+}
+
 // Quando muda, a tela pede os blocos do ML na hora (pergunta ou reclamação nova pelo webhook)
 function dash_sinal(PDO $pdo): string
 {

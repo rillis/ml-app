@@ -56,6 +56,7 @@ try {
                 'saude'    => fila_saude(),
                 'fila'     => fila_resumo($pdo),
                 'sinal'    => dash_sinal($pdo),
+                'expediente' => dash_expediente($pdo),
             ];
             break;
 
