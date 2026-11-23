@@ -73,8 +73,16 @@ $classeCartao = 'bg-gray-800 border border-gray-700 rounded-xl p-4 sm:p-6 mb-6';
         <div id="indicadores" class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6"></div>
 
         <section class="<?= $classeCartao ?>">
-            <div class="flex flex-wrap justify-between items-baseline gap-2 mb-4">
-                <h2 class="text-lg font-semibold text-gray-200">Faturamento acumulado no período</h2>
+            <div class="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 mb-4">
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <h2 id="tituloAcumulado" class="text-lg font-semibold text-gray-200">Faturamento acumulado no período</h2>
+                    <div class="flex gap-1.5" role="group" aria-label="Visão do gráfico">
+                        <?php foreach (['acumulado' => 'Acumulada', 'diario' => 'Diária'] as $chave => $nome): ?>
+                            <button type="button" data-visao="<?= $chave ?>" onclick="mudarVisaoAcumulado('<?= $chave ?>')"
+                                    class="px-2.5 py-0.5 rounded-lg text-sm font-semibold border border-gray-700 text-gray-300 hover:border-blue-500 hover:text-white transition-colors"><?= $nome ?></button>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
                 <div id="legendaAcumulado" class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-300"></div>
             </div>
             <div id="graficoAcumulado" class="relative"></div>
@@ -640,9 +648,27 @@ function acumuladoDe(porDia, de, ate, limite) {
 const MESES_LONGOS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const mesLongo = t => `${MESES_LONGOS[paraData(t).getMonth()]}/${t.slice(0, 4)}`;
 
+// Visão acumulada (padrão) ou diária: a diária é o mesmo gráfico sem somar dia a dia
+let visaoAcumulado = 'acumulado';
+let periodoAcumulado = null;
+function mudarVisaoAcumulado(visao) {
+    visaoAcumulado = visao;
+    if (periodoAcumulado) renderizarAcumulado(periodoAcumulado);
+}
+
 // A comparação aqui ignora os dias úteis: período anterior (ou ano passado) no calendário.
 // Período que começa no dia 1 de um mês vira o mês inteiro, com a comparação também inteira.
 function renderizarAcumulado(p) {
+    periodoAcumulado = p;
+    const diario = visaoAcumulado === 'diario';
+    document.getElementById('tituloAcumulado').textContent = diario ? 'Faturamento diário no período' : 'Faturamento acumulado no período';
+    document.querySelectorAll('[data-visao]').forEach(botao => {
+        const ativo = botao.dataset.visao === visaoAcumulado;
+        botao.classList.toggle('bg-blue-600', ativo);
+        botao.classList.toggle('border-blue-600', ativo);
+        botao.classList.toggle('text-white', ativo);
+        botao.setAttribute('aria-pressed', String(ativo));
+    });
     const area = document.getElementById('graficoAcumulado');
     const hoje = paraTexto(new Date());
     const porDia = faturamentoPorDia();
@@ -678,6 +704,20 @@ function renderizarAcumulado(p) {
     const temBase = temDados({ de: compDe });
     if (temBase) series.push({ nome: 'Comparação', cor: COR_COMPARACAO, valores: acumuladoDe(porDia, compDe, compAte), de: compDe, estilo: 'tracejado' });
     else nota = 'Sem dados guardados para a comparação.';
+    // Diária: cada ponto vira a diferença para a véspera. A projeção começa no realizado de hoje para as linhas se encontrarem.
+    if (diario) {
+        const acumulados = series.map(s => s.valores);
+        series.forEach((s, k) => {
+            const v = acumulados[k];
+            s.valores = v.map((valor, i) => {
+                if (valor === null || valor === undefined) return valor;
+                const anterior = i > 0 ? v[i - 1] : 0;
+                if (anterior === null || anterior === undefined) return series[0].valores[i];
+                return valor - anterior;
+            });
+        });
+        nota = nota.replace('Roxo: projeção até o fim do mês', 'Roxo: projeção de cada dia até o fim do mês');
+    }
     document.getElementById('legendaAcumulado').innerHTML = series.length > 1 ? legenda(series.map(s => [s.cor, s.nome, true, s.estilo || ''])) : '';
     document.getElementById('notaAcumulado').textContent = nota;
 
@@ -698,7 +738,8 @@ function renderizarAcumulado(p) {
     const fim = s => { for (let i = s.valores.length - 1; i >= 0; i--) if (s.valores[i] !== null && s.valores[i] !== undefined) return i; return -1; };
     const rotulo = (px, py, texto, ancora) => `<text x="${px.toFixed(1)}" y="${py.toFixed(1)}" text-anchor="${ancora}" fill="${COR_TEXTO_ROTULO}" font-size="11" stroke="${COR_FUNDO}" stroke-width="3" style="font-variant-numeric:tabular-nums;paint-order:stroke">${esc(texto)}</text>`;
     // Rótulos nas pontas: do mais alto para o mais baixo, empurrando para baixo quando colidem
-    const pontas = series.map(s => ({ s, i: fim(s) })).filter(c => c.i >= 0)
+    // Na diária o último ponto não resume nada: sem rótulos nas pontas
+    const pontas = diario ? [] : series.map(s => ({ s, i: fim(s) })).filter(c => c.i >= 0)
         .filter(c => !(c.s.nome === 'Realizado' && series.some(o => o.nome === 'Projeção'))) // o realizado continua na projeção
         .sort((a, b) => b.s.valores[b.i] - a.s.valores[a.i]);
     let ultimoY = -Infinity;
@@ -710,7 +751,7 @@ function renderizarAcumulado(p) {
             + rotulo(x(i) + (ancora === 'end' ? -8 : 8), py, moedaCurta(s.valores[i]), ancora);
     }).join('');
     const marcaHoje = series.some(s => s.nome === 'Projeção') && proj
-        ? `<circle cx="${x(proj.hojeIdx).toFixed(1)}" cy="${y(atual[proj.hojeIdx]).toFixed(1)}" r="4" fill="${COR_ATUAL}" stroke="${COR_FUNDO}" stroke-width="2"/>` : '';
+        ? `<circle cx="${x(proj.hojeIdx).toFixed(1)}" cy="${y(series[0].valores[proj.hojeIdx]).toFixed(1)}" r="4" fill="${COR_ATUAL}" stroke="${COR_FUNDO}" stroke-width="2"/>` : '';
     const rotuloX = i => (mesAlinhado ? String(i + 1) : dataCurta(somarDias(de, i)).slice(0, 5));
     const pular = Math.ceil(tamanho / Math.max(1, Math.floor(util / (mesAlinhado ? 30 : 56))));
     const eixo = Array.from({ length: tamanho }, (_, i) => i).filter(i => i % pular === 0 || i === tamanho - 1)
@@ -737,7 +778,15 @@ function renderizarAcumulado(p) {
             ponto.classList.toggle('hidden', !visivel(s));
             if (visivel(s)) { ponto.setAttribute('cx', x(i)); ponto.setAttribute('cy', y(s.valores[i])); }
         });
-        mostrarDica(e, series.filter(visivel).map(s => linhaDica(s.cor, `${s.nome} · ${dataCurta(somarDias(s.de, i)).slice(0, 5)}`, moeda(s.valores[i]))).join('') || '<span class="text-gray-400">Sem dados neste dia</span>');
+        // Realizado e projeção também mostram o faturamento do próprio dia (diferença para o acumulado da véspera)
+        const doDia = s => {
+            if (diario || (s.nome !== 'Realizado' && s.nome !== 'Projeção')) return '';
+            const anterior = i > 0 ? s.valores[i - 1] : 0;
+            if (anterior === null || anterior === undefined) return '';
+            const hojeParcial = s.nome === 'Realizado' && somarDias(s.de, i) === hoje;
+            return `<div class="flex justify-between gap-4 text-xs text-gray-400 pl-4 -mt-0.5 mb-0.5"><span>no dia${hojeParcial ? ' (até agora)' : s.nome === 'Projeção' ? ' (projetado)' : ''}</span><span class="tabular-nums">${moeda(s.valores[i] - anterior)}</span></div>`;
+        };
+        mostrarDica(e, series.filter(visivel).map(s => linhaDica(s.cor, `${s.nome} · ${dataCurta(somarDias(s.de, i)).slice(0, 5)}`, moeda(s.valores[i])) + doDia(s)).join('') || '<span class="text-gray-400">Sem dados neste dia</span>');
     });
     svg.addEventListener('pointerleave', () => { marcador.classList.add('hidden'); esconderDica(); });
 }
