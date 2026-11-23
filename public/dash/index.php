@@ -35,7 +35,7 @@ $classeTitulo = 'flex items-center justify-between gap-2 px-4 pt-3 pb-2 border-b
 
     <!-- Indicadores -->
     <div id="kpis" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4 flex-shrink-0">
-        <?php foreach (['vendas', 'etiquetas', 'perguntas', 'reclamacoes', 'boletos', 'sistema'] as $k): ?>
+        <?php foreach (['etiquetas', 'perguntas', 'reclamacoes', 'sistema', 'boletos', 'vendas'] as $k): ?>
             <button type="button" data-kpi="<?= $k ?>" class="text-left bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 hover:border-gray-500 transition-colors min-w-0">
                 <span data-rotulo class="block text-xs text-gray-400 truncate">&nbsp;</span>
                 <span data-valor class="block text-2xl font-bold tabular-nums leading-tight">–</span>

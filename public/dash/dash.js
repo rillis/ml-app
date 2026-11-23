@@ -95,10 +95,15 @@ function desenharStatus() {
 /* ===== Indicadores ===== */
 const TOM_KPI = {
     normal: ['border-gray-700', 'text-gray-100'],
-    ok: ['border-emerald-800', 'text-emerald-300'],
+    ok: ['border-emerald-600', 'text-emerald-300'],
     alerta: ['border-amber-600', 'text-amber-300'],
     perigo: ['border-red-600', 'text-red-300'],
 };
+// Farol dos quatro primeiros cards: verde = nada para fazer, vermelho = algo esperando, amarelo = não deu para consultar
+const FAROL = { ok: '🟢', perigo: '🔴', alerta: '🟡' };
+function farol(chave, rotulo, valor, sub, tom) {
+    kpi(chave, rotulo, `${FAROL[tom]} ${valor}`, sub, tom);
+}
 function kpi(chave, rotulo, valor, sub, tom = 'normal') {
     const b = document.querySelector(`[data-kpi="${chave}"]`);
     const [borda, cor] = TOM_KPI[tom];
@@ -128,36 +133,34 @@ function desenharKpis() {
 
         const f = banco.fila;
         const problema = !banco.saude.ok || f.falhas > 0;
-        kpi('sistema', 'Sistema', banco.saude.ok ? (f.falhas ? `${f.falhas} falha${f.falhas > 1 ? 's' : ''}` : 'OK') : 'Problema',
+        farol('sistema', 'Sistema', banco.saude.ok ? (f.falhas ? `${f.falhas} falha${f.falhas > 1 ? 's' : ''}` : 'OK') : 'Problema',
             banco.saude.ok ? `fila: ${f.pendentes} pend. · ${f.enviados_24h} env. 24h` : banco.saude.texto, problema ? 'perigo' : 'ok');
     }
     if (ml) {
         const p = ml.perguntas;
         if (p.lista) {
             const antiga = p.lista[0];
-            const minutos = antiga ? (Date.now() - new Date(antiga.data)) / 60000 : 0;
-            kpi('perguntas', 'Perguntas sem resposta', String(p.total),
-                antiga ? 'mais antiga ' + ha(antiga.data) : 'tudo respondido', !p.total ? 'ok' : minutos > 60 ? 'perigo' : 'alerta');
+            farol('perguntas', 'Perguntas sem resposta', String(p.total),
+                antiga ? 'mais antiga ' + ha(antiga.data) : 'tudo respondido', p.total ? 'perigo' : 'ok');
         } else {
-            kpi('perguntas', 'Perguntas sem resposta', '?', 'falha ao consultar', 'alerta');
+            farol('perguntas', 'Perguntas sem resposta', '?', 'falha ao consultar', 'alerta');
         }
 
         const r = ml.reclamacoes;
         if (r.lista) {
-            kpi('reclamacoes', 'Reclamações', String(r.acao || r.total),
-                r.acao ? `com ação sua · ${r.total} abertas` : r.total ? 'abertas, nenhuma pede ação' : 'nenhuma aberta', r.acao ? 'perigo' : 'normal');
+            farol('reclamacoes', 'Reclamações', String(r.acao || r.total),
+                r.acao ? `com ação sua · ${r.total} abertas` : r.total ? 'abertas, nenhuma pede ação' : 'nenhuma aberta', r.acao ? 'perigo' : 'ok');
         } else {
-            kpi('reclamacoes', 'Reclamações', '?', 'falha ao consultar', 'alerta');
+            farol('reclamacoes', 'Reclamações', '?', 'falha ao consultar', 'alerta');
         }
 
         const e = ml.etiquetas;
         if (e.lista) {
             const total = e.nf + e.prontas + e.sem_fiscal;
             const partes = [e.nf && `${e.nf} NF`, e.prontas && `${e.prontas} imprimir`, e.sem_fiscal && `${e.sem_fiscal} sem fiscal`].filter(Boolean);
-            kpi('etiquetas', 'Etiquetas', String(total), partes.join(' · ') || 'nada pendente',
-                e.sem_fiscal ? 'perigo' : total ? 'alerta' : 'ok');
+            farol('etiquetas', 'Etiquetas', String(total), partes.join(' · ') || 'nada pendente', total ? 'perigo' : 'ok');
         } else {
-            kpi('etiquetas', 'Etiquetas', '?', 'serviço indisponível', 'alerta');
+            farol('etiquetas', 'Etiquetas', '?', 'serviço indisponível', 'alerta');
         }
 
         const pend = (p.total || 0) + (r.acao || 0);
