@@ -148,8 +148,9 @@ function desenharKpis() {
 
         const r = ml.reclamacoes;
         if (r.lista) {
-            farol('reclamacoes', 'Reclamações', String(r.acao || r.total),
-                r.acao ? `com ação sua · ${r.total} abertas` : r.total ? 'abertas, nenhuma pede ação' : 'nenhuma aberta', r.acao ? 'perigo' : 'ok');
+            // O número grande é só o que pede ação sua; as abertas em acompanhamento ficam no texto de baixo
+            farol('reclamacoes', 'Reclamações com ação sua', String(r.acao),
+                r.total ? `${r.total} aberta${r.total > 1 ? 's' : ''} no total` : 'nenhuma aberta', r.acao ? 'perigo' : 'ok');
         } else {
             farol('reclamacoes', 'Reclamações', '?', 'falha ao consultar', 'alerta');
         }
