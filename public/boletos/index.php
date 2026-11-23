@@ -72,8 +72,8 @@ require __DIR__ . '/../../src/boletos/nivel.php';
                             </th>
                             <th class="p-4 font-semibold">Vencimento (Real)</th>
                             <th class="p-4 font-semibold">Descrição</th>
-                            <th class="p-4 font-semibold">Valor</th>
-                            <th class="p-4 font-semibold">Status</th>
+                            <th class="py-4 px-3 font-semibold">Valor</th>
+                            <th class="py-4 px-3 font-semibold">Status</th>
                             <th class="p-4 font-semibold text-center">Ações</th>
                         </tr>
                     </thead>
@@ -108,6 +108,24 @@ require __DIR__ . '/../../src/boletos/nivel.php';
                     <button type="submit" id="btnSalvar" class="px-6 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-wait text-white font-semibold transition-colors shadow-lg">Salvar Boleto</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <div id="modalQr" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex justify-center items-center p-4" onclick="if (event.target === this) fecharQr()">
+        <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700 shadow-2xl w-full max-w-xl relative">
+            <button onclick="fecharQr()" aria-label="Fechar" class="absolute top-3 right-3 w-11 h-11 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-100 hover:bg-gray-700 text-2xl leading-none">&times;</button>
+            <div class="pr-12 mb-5">
+                <h2 id="qrDescricao" class="text-xl font-bold text-gray-100"></h2>
+                <p id="qrInfo" class="text-sm text-gray-400 mt-1"></p>
+            </div>
+            <div class="flex flex-col sm:flex-row items-center gap-6">
+                <div id="qrImagem" class="bg-white rounded-xl p-3 shrink-0"></div>
+                <ol class="list-decimal list-inside space-y-2 text-sm text-gray-400">
+                    <li>Leia o QR com a câmera do celular e copie o texto.</li>
+                    <li>No app do banco, abra Pagar boleto e cole o código.</li>
+                </ol>
+            </div>
+            <p id="qrLinha" class="mt-5 text-center font-mono text-sm text-gray-400 break-all"></p>
         </div>
     </div>
 
@@ -156,6 +174,7 @@ require __DIR__ . '/../../src/boletos/nivel.php';
     <script src="/assets/ui.js?v=<?= filemtime(__DIR__ . '/../assets/ui.js') ?>"></script>
     <!-- A versão na URL evita que navegador ou Cloudflare sirvam uma cópia antiga do script. -->
     <script src="boleto-pdf.js?v=<?= filemtime(__DIR__ . '/boleto-pdf.js') ?>"></script>
+    <script src="vendor/qrcode/qrcode.js?v=<?= filemtime(__DIR__ . '/vendor/qrcode/qrcode.js') ?>"></script>
     <script>
     let cacheBoletos = [];
     // Níveis de alerta: a regra fica em src/boletos/nivel.php; a API já manda b.nivel e b.dias.
@@ -235,6 +254,32 @@ require __DIR__ . '/../../src/boletos/nivel.php';
             .then(() => ML.toast('Código copiado para a área de transferência!', 'sucesso'))
             .catch(() => ML.toast('Não foi possível copiar o código.', 'erro'));
     }
+
+    // Mostra a linha digitável em QR code na tela do PC, para passar ao app do banco no celular.
+    function abrirQr(id) {
+        const b = cacheBoletos.find(x => Number(x.id) === Number(id));
+        const linha = b && BoletoPdf.linhaDoCodigo(b.codigo_boleto);
+        if (!linha) {
+            ML.toast('Este código não é uma linha digitável válida.', 'erro');
+            return;
+        }
+        const qr = qrcode(0, 'M');
+        qr.addData(linha, 'Numeric');
+        qr.make();
+        document.getElementById('qrDescricao').textContent = b.descricao;
+        document.getElementById('qrInfo').textContent = `${formatarMoeda(b.valor)} · vence ${formatarDataBR(b.data_vencimento_real)}`;
+        document.getElementById('qrImagem').innerHTML = qr.createSvgTag({ cellSize: 7, margin: 4 });
+        document.getElementById('qrLinha').textContent = linha;
+        document.getElementById('modalQr').classList.remove('hidden');
+    }
+
+    function fecharQr() {
+        document.getElementById('modalQr').classList.add('hidden');
+    }
+
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && !document.getElementById('modalQr').classList.contains('hidden')) fecharQr();
+    });
 
     function boletosVisiveis() {
         const termo = document.getElementById('busca').value.toLowerCase().trim();
@@ -707,11 +752,12 @@ require __DIR__ . '/../../src/boletos/nivel.php';
                         <div class="text-gray-100 font-semibold text-base">${descricao}</div>
                         ${b.codigo_boleto ? `<div class="text-xs text-gray-500 font-mono mt-1 cursor-pointer hover:text-blue-400 inline-block" onclick="copiarCodigo('${b.codigo_boleto}')" title="Clique para copiar">${b.codigo_boleto}</div>` : '<div class="text-xs text-gray-600 mt-1 italic">Sem código</div>'}
                     </td>
-                    <td class="p-4 font-bold text-emerald-400 text-base">${valor}</td>
-                    <td class="p-4 space-x-1">${btnAgendado(false)} ${btnPago(false)}</td>
-                    <td class="p-4 text-center">
-                        <button ${editar} class="bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white h-8 w-8 rounded font-bold text-sm transition-colors border border-blue-500/20 mx-1" title="Editar">✏️</button>
-                        <button onclick="apagar(${b.id})" class="bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white h-8 w-8 rounded font-bold text-sm transition-colors border border-red-500/20 mx-1" title="Excluir">🗑️</button>
+                    <td class="py-4 px-3 font-bold text-emerald-400 text-base">${valor}</td>
+                    <td class="py-4 px-3 space-x-1">${btnAgendado(false)} ${btnPago(false)}</td>
+                    <td class="py-4 pl-1 pr-3 text-center">
+                        ${BoletoPdf.linhaDoCodigo(b.codigo_boleto) ? `<button onclick="abrirQr(${Number(b.id)})" class="bg-gray-500/10 text-gray-300 hover:bg-gray-200 hover:text-gray-900 h-8 w-8 rounded text-sm transition-colors border border-gray-500/30 mx-0.5 inline-flex items-center justify-center align-middle" title="Mostrar QR code para pagar pelo celular"><svg viewBox="0 0 16 16" class="w-4 h-4" fill="currentColor" aria-hidden="true"><path d="M1 1h6v6H1zm2 2v2h2V3zM9 1h6v6H9zm2 2v2h2V3zM1 9h6v6H1zm2 2v2h2v-2zM9 9h2v2H9zm2 2h2v2h-2zm2-2h2v2h-2zm0 4h2v2h-2zm-4 0h2v2H9z"/></svg></button>` : ''}
+                        <button ${editar} class="bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white h-8 w-8 rounded font-bold text-sm transition-colors border border-blue-500/20 mx-0.5" title="Editar">✏️</button>
+                        <button onclick="apagar(${b.id})" class="bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white h-8 w-8 rounded font-bold text-sm transition-colors border border-red-500/20 mx-0.5" title="Excluir">🗑️</button>
                     </td>
                 </tr>
             `);

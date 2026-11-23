@@ -105,6 +105,23 @@
         return linha;
     }
 
+    // Converte o código salvo (linha digitável de 47/48 dígitos ou barras de 44) nos 44 dígitos das barras.
+    // Devolve null se os dígitos verificadores não baterem.
+    function barrasDoCodigo(codigo) {
+        const c = String(codigo || '').replace(/\D/g, '');
+        if (c.length === 47) return linhaBancariaValida(c) ? barrasDaLinhaBancaria(c) : null;
+        if (c.length === 48) return linhaArrecadacaoValida(c) ? barrasDaLinhaArrecadacao(c) : null;
+        if (c.length === 44) return barrasBancariaValida(c) || barrasArrecadacaoValida(c) ? c : null;
+        return null;
+    }
+
+    // Linha digitável (47/48 dígitos) do código salvo, que é o formato aceito ao colar no app do banco.
+    function linhaDoCodigo(codigo) {
+        const barras = barrasDoCodigo(codigo);
+        if (!barras) return null;
+        return barras[0] === '8' ? linhaDasBarrasArrecadacao(barras) : linhaDasBarrasBancaria(barras);
+    }
+
     // ---------- Interpretação do código ----------
 
     function valorOuNulo(digitos) {
@@ -360,7 +377,7 @@
         }
     }
 
-    const api = { lerArquivo, analisarPaginas, normalizar, encontrarCodigos, interpretarCodigo, linhaBancariaValida, linhaArrecadacaoValida, mod10, mod11Banco, mod11Arrecadacao, dvArrecadacao };
+    const api = { lerArquivo, barrasDoCodigo, linhaDoCodigo, analisarPaginas, normalizar, encontrarCodigos, interpretarCodigo, linhaBancariaValida, linhaArrecadacaoValida, mod10, mod11Banco, mod11Arrecadacao, dvArrecadacao };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else global.BoletoPdf = api;
 })(typeof window !== 'undefined' ? window : globalThis);
