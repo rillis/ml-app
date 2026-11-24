@@ -13,6 +13,7 @@ $rotas = [
     'job'       => ['GET', '/api/job'],
     'visto'     => ['POST', '/api/job/visto'],
     'historico' => ['GET', '/api/historico'],
+    'baixa'     => ['POST', '/api/baixa'],
 ];
 
 /* ===== ARQUIVO: PDFs gerados (DANFEs e etiquetas) ===== */

@@ -245,6 +245,44 @@ async function verificarJob() {
 
 let jobDoResultado = null;
 
+// Item do estoque de devoluções com o "certo" que dá baixa da quantidade no módulo Estoque.
+function itemEstoque(res, m) {
+    const chave = `${m.nome}|${m.vendido}|${m.no_estoque}`;
+    const texto = el('span', {}, `${m.levando}x ${m.vendido} (${m.nome}) → tem ${m.total}x ${m.no_estoque}`);
+    const nota = el('span', { class: 'text-xs text-emerald-400' });
+    const botao = el('button', { type: 'button', title: `Dar baixa de ${m.levando}x ${m.no_estoque} no estoque` });
+    const marcar = (feito) => {
+        botao.className = 'w-6 h-6 shrink-0 rounded-md border inline-flex items-center justify-center text-sm font-bold transition-colors '
+            + (feito ? 'bg-emerald-600 border-emerald-600 text-white cursor-default' : 'border-gray-500 text-gray-500 hover:border-emerald-500 hover:text-emerald-400');
+        botao.textContent = '✓';
+        botao.disabled = feito;
+        if (feito) botao.title = 'Baixa já feita no estoque';
+    };
+    marcar((res.baixas || []).includes(chave));
+    botao.addEventListener('click', async () => {
+        botao.disabled = true;
+        try {
+            const r = await fetch('/estoque/api.php?action=remover', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sku: m.no_estoque, qtd: m.levando }),
+            });
+            const corpo = await r.json().catch(() => null);
+            if (!r.ok || !corpo || corpo.error) throw new Error((corpo && corpo.error) || `Erro ${r.status}`);
+            const saiu = corpo.removido ?? m.levando;
+            texto.textContent = `${m.levando}x ${m.vendido} (${m.nome}) → tinha ${m.total}x ${m.no_estoque}`;
+            nota.textContent = `baixa de ${saiu}x`;
+            marcar(true);
+            res.baixas = [...(res.baixas || []), chave];
+            api('baixa', { method: 'POST', body: JSON.stringify({ pasta: res.pasta, chave, feito: true }) }).catch(() => {});
+        } catch (err) {
+            botao.disabled = false;
+            nota.className = 'text-xs text-red-400';
+            nota.textContent = err.message;
+        }
+    });
+    return el('li', { class: 'flex items-start gap-2' }, botao, el('div', { class: 'pt-0.5' }, texto, ' ', nota));
+}
+
 function mostrarResultado(res, job = null) {
     jobDoResultado = job;
     const erros = res.erros || [];
@@ -269,7 +307,7 @@ function mostrarResultado(res, job = null) {
             if (!lista || !lista.length) continue;
             blocos.push(el('div', { class: 'mb-2' },
                 el('div', { class: 'text-sm font-semibold text-gray-300' }, rotulo),
-                el('ul', { class: 'list-disc pl-5 text-sm' }, lista.map((m) => el('li', {}, `${m.levando}x ${m.vendido} (${m.nome}) → tem ${m.total}x ${m.no_estoque}`)))));
+                el('ul', { class: 'text-sm space-y-1 mt-1' }, lista.map((m) => itemEstoque(res, m)))));
         }
     }
     $('#resEstoque').replaceChildren(...blocos);
