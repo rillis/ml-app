@@ -339,15 +339,30 @@ async function carregarHistorico() {
     const box = $('#historico');
     if (!itens.length) { box.replaceChildren(el('p', { class: 'text-sm text-gray-400' }, 'Nenhum processamento ainda.')); return; }
     const botao = CLASSE_BOTAO.replace('py-2 px-4', 'py-1.5 px-3 text-sm');
-    box.replaceChildren(...itens.map((h) => el('div', { class: 'bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 flex flex-wrap justify-between items-center gap-2' },
-        el('div', {},
+    box.replaceChildren(...itens.map((h) => {
+        const linha = `${h.vendas.length} venda(s)` + (h.vendas.some((v) => v.nf) ? ' · NF ' + faixasNf(h.vendas.map((v) => v.nf)) : '');
+        return el('div', { class: 'bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 flex flex-wrap sm:flex-nowrap justify-between items-center gap-2' },
+        el('div', { class: 'min-w-0' },
             el('div', {}, horaCurta(h.criado_em)),
-            el('div', { class: 'text-sm text-gray-400' }, `${h.vendas.length} venda(s)` + (h.vendas.some((v) => v.nf) ? ' · NF ' + h.vendas.map((v) => v.nf).filter(Boolean).join(', ') : ''))),
-        el('div', { class: 'flex flex-wrap gap-2' },
+            el('div', { class: 'text-sm text-gray-400 truncate', title: linha }, linha)),
+        el('div', { class: 'flex flex-wrap sm:flex-nowrap gap-2 sm:shrink-0' },
             h.danfe ? el('a', { class: botao, href: urlArquivo(h.pasta, h.danfe) }, '⬇ DANFEs') : null,
             h.etiquetas ? el('a', { class: botao, href: urlArquivo(h.pasta, h.etiquetas) }, '⬇ Etiquetas') : null,
             el('button', { type: 'button', class: botao, onclick: () => mostrarResultado(h) }, 'Ver mensagem')),
-    )));
+        );
+    }));
+}
+
+// [5214, 5212, 5213, 5220] -> "5212 a 5214, 5220"
+function faixasNf(nfs) {
+    const nums = [...new Set(nfs.filter(Boolean).map(Number))].sort((a, b) => a - b);
+    const faixas = [];
+    for (const n of nums) {
+        const ultima = faixas[faixas.length - 1];
+        if (ultima && n === ultima[1] + 1) ultima[1] = n;
+        else faixas.push([n, n]);
+    }
+    return faixas.map(([a, b]) => (a === b ? `${a}` : b === a + 1 ? `${a}, ${b}` : `${a} a ${b}`)).join(', ');
 }
 
 // ------------------------------------------------------------------ início
