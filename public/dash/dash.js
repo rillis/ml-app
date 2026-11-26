@@ -221,7 +221,7 @@ function desenharPrecisa() {
         $('#etiquetas').replaceChildren(vazio('Nada aguardando NF ou impressão.'));
     } else {
         $('#etiquetas').replaceChildren(
-            el('button', { type: 'button', class: 'w-full text-left py-2 px-1 -mx-1 rounded hover:bg-gray-700/50 flex flex-wrap items-center gap-2', onclick: modalEtiquetas },
+            el('a', { href: '/etiquetas/', class: 'w-full text-left py-2 px-1 -mx-1 rounded hover:bg-gray-700/50 flex flex-wrap items-center gap-2' },
                 e.nf ? el('span', { class: `${TAG} ${COR.alerta}` }, `${e.nf} aguardando NF`) : null,
                 e.prontas ? el('span', { class: `${TAG} ${COR.ok}` }, `${e.prontas} pronta${e.prontas > 1 ? 's' : ''} para imprimir`) : null,
                 e.sem_fiscal ? el('span', { class: `${TAG} ${COR.perigo}` }, `${e.sem_fiscal} sem dados fiscais`) : null,
@@ -411,21 +411,6 @@ function modalReclamacao(c) {
     ]);
 }
 
-function modalEtiquetas() {
-    const e = ml.etiquetas;
-    const tagSituacao = { nf: [COR.alerta, 'Aguardando NF'], pronta: [COR.ok, 'Pronta'], sem_fiscal: [COR.perigo, 'Sem dados fiscais'] };
-    abrirModal('Etiquetas pendentes', [
-        el('ul', { class: 'divide-y divide-gray-700' }, (e.lista || []).map((v) => el('li', { class: 'py-2 flex gap-3 items-start' },
-            el('div', { class: 'min-w-0 flex-1' },
-                el('div', { class: 'text-sm font-semibold' }, v.comprador),
-                el('div', { class: 'text-xs text-gray-400' }, `venda ${v.venda} · ${ha(v.data)}${v.entrega ? ' · entrega ' + dataCurta(v.entrega) : ''}`),
-                el('div', { class: 'text-sm text-gray-300 mt-0.5 break-words' }, v.itens.join(' + '))),
-            el('div', { class: 'text-right flex-shrink-0' },
-                el('div', { class: 'text-sm tabular-nums' }, brl(v.total)),
-                el('span', { class: `${TAG} ${tagSituacao[v.situacao][0]}` }, v.em_processamento ? 'Em processamento' : tagSituacao[v.situacao][1]))))),
-    ], [el('a', { href: '/etiquetas/', class: CLASSE_PRIMARIO + ' text-sm' }, 'Abrir a aba Etiquetas')]);
-}
-
 function modalEvento(e) {
     if (e.fonte === 'pergunta' && ml && ml.perguntas.lista) {
         const aberta = ml.perguntas.lista.find((q) => q.id === e.pergunta);
@@ -575,7 +560,7 @@ const rolarPara = (sel) => () => {
 };
 const ACOES_KPI = {
     vendas: () => { filtro = 'venda'; desenharEventos(); },
-    etiquetas: () => ml && ml.etiquetas.lista && ml.etiquetas.lista.length ? modalEtiquetas() : (location.href = '/etiquetas/'),
+    etiquetas: () => { location.href = '/etiquetas/'; },
     perguntas: () => ml && ml.perguntas.lista && ml.perguntas.lista.length ? modalPergunta(ml.perguntas.lista[0]) : rolarPara('#perguntas')(),
     reclamacoes: rolarPara('#reclamacoes'),
     boletos: () => { location.href = '/boletos/'; },
