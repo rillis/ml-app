@@ -256,9 +256,10 @@ function dash_ml_dados(bool $forcar = false): array
         $pedidos = $cache['pedidos'] ?? [];
         $anterior = $cache['dados'] ?? [];
         $dados = ['quando' => date('c')];
+        // function com use (&): fn() receberia uma cópia e as memórias nunca seriam gravadas
         foreach ([
-            'perguntas'   => fn() => dash_perguntas($itens),
-            'reclamacoes' => fn() => dash_reclamacoes($motivos, $pedidos),
+            'perguntas'   => function () use (&$itens) { return dash_perguntas($itens); },
+            'reclamacoes' => function () use (&$motivos, &$pedidos) { return dash_reclamacoes($motivos, $pedidos); },
             'etiquetas'   => fn() => dash_etiquetas(),
         ] as $bloco => $buscar) {
             try {
