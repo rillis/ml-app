@@ -931,7 +931,7 @@ async function enviarMudanca(e) {
 async function aplicarMudanca() {
     const p = mudanca?.plano;
     if (!p) return;
-    const ok = await ML.confirmar(`Gravar ${p.mudancas.length} mudança${p.mudancas.length > 1 ? 's' : ''} no ML? Antes de cada uma, confere se o valor ainda é o do download; preço com promoção ou automação é pulado.`,
+    const ok = await ML.confirmar(`Gravar ${p.mudancas.length} mudança${p.mudancas.length > 1 ? 's' : ''} no ML? Antes de cada uma, confere se o valor ainda é o do download.`,
         { titulo: 'Aplicar mudanças', textoConfirmar: 'Aplicar' });
     if (ok) iniciarJob({ tipo: 'mudanca_aplicar', plano: p.id });
 }
