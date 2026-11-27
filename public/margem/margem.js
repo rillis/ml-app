@@ -14,13 +14,14 @@ const codigoAnuncio = codigo => `<button type="button" data-copiar="${esc(codigo
 const urlPlanilha =(modulo, nome) => `api.php?r=arquivo&modulo=${modulo}&nome=${encodeURIComponent(nome)}`;
 
 const LIMITE_LINHAS = 300;
-const NOME_TAREFA = { atualizar: 'Atualização das margens', recalcular: 'Recálculo da margem', teste: 'Teste da margem', parcial: 'Atualização de alguns anúncios', skus: 'Comparação de SKUs', editar: 'Edição à mão', pares: 'Busca de anúncios sem par', clonar: 'Criação da opção de venda', gtin: 'Correção do GTIN duplicado', formato: 'Formato de venda e nova tentativa' };
+const NOME_TAREFA = { atualizar: 'Atualização das margens', recalcular: 'Recálculo da margem', teste: 'Teste da margem', parcial: 'Atualização de alguns anúncios', skus: 'Comparação de SKUs', editar: 'Edição à mão', mudanca_baixar: 'Planilha de mudança', mudanca_aplicar: 'Mudança em massa', pares: 'Busca de anúncios sem par', clonar: 'Criação da opção de venda', gtin: 'Correção do GTIN duplicado', formato: 'Formato de venda e nova tentativa' };
 const STATUS = { active: 'ativo', paused: 'pausado', closed: 'encerrado', under_review: 'em revisão', inactive: 'inativo' };
 
 let estado = null;          // /api/estado
 let margem = null;          // última planilha de custo (json)
 let skus = null;            // último comparador (json)
 let clonar = null;          // anúncios sem par + histórico (json)
+let mudanca = null;          // último download, plano e resultado da mudança em massa
 let divergentes = new Map(); // código -> frete/adc que o painel do ML cobra (data/frete-divergente.json)
 const marcadosClonar = new Set();  // códigos marcados para criar em lote
 const MAX_CLONAR = 20;
@@ -59,6 +60,7 @@ function abrirAba(aba) {
     if (aba === 'tabelas') carregarTabelas();
     if (aba === 'simulador') $('#simSku').focus();
     if (aba === 'clonar') carregarClonar();
+    if (aba === 'mudanca') carregarMudanca();
 }
 
 // ===================================================================== estado geral
@@ -121,7 +123,7 @@ function mostrarJob(job) {
     }
     const cores = { ok: 'border-emerald-500/50', erro: 'border-red-500/50', parado: 'border-amber-500/50' };
     const icone = { ok: '✅', erro: '❌', parado: '⏸️' }[job.estado] || '';
-    const modulo = job.tipo === 'skus' ? 'skus' : 'margem';
+    const modulo = job.tipo === 'skus' ? 'skus' : job.tipo === 'mudanca_baixar' ? 'mudanca' : 'margem';
     // criação da opção de venda: o resumo do loop fica no histórico da aba Clonar; o log mostra o que aconteceu
     painel.className = `bg-gray-800 border ${cores[job.estado] || 'border-gray-700'} rounded-xl p-4 sm:p-5 mb-6`;
     painel.innerHTML = `
@@ -136,7 +138,7 @@ function mostrarJob(job) {
                 <button type="button" id="btnVisto" class="${CLASSE_BOTAO} text-sm">Ok</button>
             </div>
         </div>
-        ${job.estado !== 'ok' || ['clonar', 'gtin', 'formato'].includes(job.tipo) ? log : ''}`;
+        ${job.estado !== 'ok' || ['clonar', 'gtin', 'formato', 'mudanca_aplicar'].includes(job.tipo) ? log : ''}`;
     $('#btnVisto').addEventListener('click', async () => {
         await postJson('visto').catch(() => null);
         painel.classList.add('hidden');
@@ -189,6 +191,8 @@ async function recarregarTudo(tipo) {
     if (tipo === 'skus') await carregarSkus();
     else if (tipo === 'teste') await carregarTeste();
     else if (tipo === 'pares' || tipo === 'gtin') await carregarClonar();
+    else if (tipo === 'mudanca_baixar') await carregarMudanca();
+    else if (tipo === 'mudanca_aplicar') await Promise.all([carregarMudanca(), carregarMargem()]);
     else if (tipo === 'clonar' || tipo === 'formato') await Promise.all([carregarClonar(), carregarMargem()]);
     else await carregarMargem();
     if ($('#avancado').open) carregarPlanilhas();
@@ -821,6 +825,117 @@ async function salvarEdicao(e) {
     iniciarJob(dados);
 }
 
+// ===================================================================== mudança em massa (planilha)
+
+const CAMPO_MUDANCA = { preco: 'Preço', status: 'Status', sku: 'SKU', estoque_local: 'Estoque local', prazo: 'Prazo' };
+const STATUS_PT = { active: 'Ativo', paused: 'Pausado', under_review: 'Em revisão', inactive: 'Inativo', closed: 'Encerrado' };
+const RESULTADO_MUDANCA = {
+    ok: ['gravado', 'bg-emerald-900/40 text-emerald-200 border-emerald-500/30'],
+    pulado: ['pulado', 'bg-amber-900/50 text-amber-200 border-amber-500/40'],
+    conferir: ['conferir', 'bg-amber-900/50 text-amber-200 border-amber-500/40'],
+    erro: ['erro', 'bg-red-900/60 text-red-200 border-red-500/40'],
+    enviado: ['enviado', 'border-blue-500/50 text-blue-200'],
+    pendente: ['não enviado', 'border-gray-600 text-gray-400'],
+};
+
+function valorMudanca(campo, v) {
+    if (campo === 'preco') return brl(v);
+    if (campo === 'status') return STATUS_PT[v] || v;
+    if (campo === 'prazo') return v ? `${v} dia${v > 1 ? 's' : ''}` : 'sem prazo';
+    return v == null || v === '' ? '—' : esc(String(v));
+}
+
+async function carregarMudanca() {
+    try {
+        mudanca = await api('mudanca');
+    } catch (e) {
+        ML.toast(e.message, 'erro');
+        return;
+    }
+    renderMudanca();
+}
+
+function renderMudanca() {
+    if (!mudanca) return;
+    const d = mudanca.download;
+    $('#infoMudancaDownload').innerHTML = d
+        ? `Última: ${quando(d.gerado)} · ${d.anuncios} anúncios, ${d.produtos} produtos · ${esc(d.filtros)} · <a class="text-blue-400 hover:text-blue-300" href="${urlPlanilha('mudanca', d.planilha)}">⬇️ ${esc(d.planilha)}</a>`
+        : 'Nenhuma planilha baixada ainda.';
+
+    const p = mudanca.plano;
+    $('#secaoPlanoMudanca').classList.toggle('hidden', !p);
+    if (!p) return;
+    // o resultado só vale se for deste plano
+    const r = mudanca.resultado && mudanca.resultado.id === p.id && (mudanca.resultado.aplicado || '') >= p.criado ? mudanca.resultado : null;
+    const muds = r ? r.mudancas : p.mudancas;
+    const cont = Object.entries(p.contagem).filter(([, n]) => n).map(([c, n]) => `${n} ${CAMPO_MUDANCA[c].toLowerCase()}`).join(' · ');
+    $('#infoPlanoMudanca').innerHTML = `Planilha de ${quando(p.download)} enviada ${quando(p.criado)} · `
+        + (p.mudancas.length ? `<strong class="text-gray-200">${p.mudancas.length} mudança${p.mudancas.length > 1 ? 's' : ''}</strong> (${cont})` : 'nenhuma mudança')
+        + (r ? ` · aplicado ${quando(r.aplicado)}: ${r.contagem.ok} gravadas, ${r.contagem.pulado} puladas, ${r.contagem.erro} com erro${r.contagem.conferir ? `, ${r.contagem.conferir} para conferir` : ''}` : '');
+    const aplicar = $('#btnMudancaAplicar');
+    aplicar.classList.toggle('hidden', !!r || !p.mudancas.length);
+    aplicar.textContent = `✅ Aplicar ${p.mudancas.length} mudança${p.mudancas.length > 1 ? 's' : ''}`;
+    aplicar.disabled = jobRodando;
+
+    $('#errosMudanca').innerHTML = [
+        ...p.erros.map(e => `<p class="text-sm text-red-300">✕ ${esc(e.aba)}, linha ${e.linha} (${esc(e.id)}): ${esc(e.erro)} — não entra</p>`),
+        ...p.avisos.map(a => `<p class="text-xs text-amber-300">${esc(a)}</p>`),
+    ].join('');
+    $('#tabelaMudanca').innerHTML = muds.length ? muds.map(m => {
+        const [nome, cor] = r ? (RESULTADO_MUDANCA[m.resultado] || [m.resultado, 'border-gray-600 text-gray-400']) : ['a aplicar', 'border-gray-600 text-gray-400'];
+        const alvo = m.nivel === 'anuncio'
+            ? codigoAnuncio(m.id)
+            : `<span class="text-gray-300">${esc(m.id)}</span> <span class="text-gray-500">(${m.anuncios.length} anúncio${m.anuncios.length > 1 ? 's' : ''})</span>`;
+        return `<tr class="border-t border-gray-700/60 align-top">
+            <td class="py-2 pr-3"><div class="font-semibold text-gray-100">${esc(m.sku || '')}</div><div class="text-xs">${alvo}</div></td>
+            <td class="py-2 px-2 sm:px-3">${CAMPO_MUDANCA[m.campo]}</td>
+            <td class="py-2 px-2 sm:px-3 text-right tabular-nums text-gray-400">${valorMudanca(m.campo, m.antes)}</td>
+            <td class="py-2 px-2 sm:px-3 text-right tabular-nums text-gray-100">${valorMudanca(m.campo, m.depois)}</td>
+            <td class="py-2 pl-2 sm:pl-3 text-right">${pilula(nome, cor)}${m.motivo ? `<div class="text-xs text-amber-300 mt-1">${esc(m.motivo)}</div>` : ''}</td>
+        </tr>`;
+    }).join('') : '<tr><td colspan="5" class="py-6 text-center text-gray-500">Nenhuma diferença nas colunas editáveis.</td></tr>';
+}
+
+function baixarMudanca() {
+    const marcados = nome => $$(`[data-secao="mudanca"] input[name="${nome}"]:checked`).map(c => c.value);
+    const dados = { tipo: 'mudanca_baixar', status: marcados('status'), tipos: marcados('tipos'), envios: marcados('envios'), colunas: marcados('colunas') };
+    if (!dados.status.length || !dados.tipos.length || !dados.envios.length) {
+        ML.toast('Marque ao menos uma opção em Status, Tipo e Envio.', 'aviso');
+        return;
+    }
+    if (!dados.colunas.some(c => ['status', 'preco', 'sku', 'estoque_local', 'prazo'].includes(c))) {
+        ML.toast('Marque ao menos uma coluna alterável.', 'aviso');
+        return;
+    }
+    iniciarJob(dados);
+}
+
+async function enviarMudanca(e) {
+    e.preventDefault();
+    const arquivo = $('#arquivoMudanca').files[0];
+    if (!arquivo) { ML.toast('Escolha a planilha editada.', 'aviso'); return; }
+    const dados = new FormData();
+    dados.append('arquivo', arquivo);
+    try {
+        const r = await api('mudanca_planilha', { method: 'POST', body: dados });
+        mudanca = { ...(mudanca || {}), plano: r.plano };
+        renderMudanca();
+        const n = r.plano.mudancas.length;
+        ML.toast(n ? `${n} mudança${n > 1 ? 's' : ''} encontrada${n > 1 ? 's' : ''}: confira antes de aplicar.` : 'Nenhuma diferença.', n ? 'info' : 'aviso');
+        $('#secaoPlanoMudanca').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (erro) {
+        ML.toast(erro.message, 'erro');
+    }
+}
+
+async function aplicarMudanca() {
+    const p = mudanca?.plano;
+    if (!p) return;
+    const ok = await ML.confirmar(`Gravar ${p.mudancas.length} mudança${p.mudancas.length > 1 ? 's' : ''} no ML? Antes de cada uma, confere se o valor ainda é o do download; preço com promoção ou automação é pulado.`,
+        { titulo: 'Aplicar mudanças', textoConfirmar: 'Aplicar' });
+    if (ok) iniciarJob({ tipo: 'mudanca_aplicar', plano: p.id });
+}
+
 // ----- dica flutuante: aparece logo ao passar o mouse (ou focar) em qualquer elemento com data-dica
 
 function ligarDicas() {
@@ -1046,6 +1161,9 @@ function ligarEventos() {
     $('#btnGtinCancelar').addEventListener('click', fecharPlanoGtin);
     $('#btnFormatoCancelar').addEventListener('click', fecharFormato);
     $('#btnEditarCancelar').addEventListener('click', fecharEdicao);
+    $('#btnMudancaBaixar').addEventListener('click', baixarMudanca);
+    $('#formMudanca').addEventListener('submit', enviarMudanca);
+    $('#btnMudancaAplicar').addEventListener('click', aplicarMudanca);
     $('#formEditar').addEventListener('submit', salvarEdicao);
     ['#editarPreco', '#editarTaxa', '#editarFrete', '#editarAdc'].forEach(s => $(s).addEventListener('input', previaEdicao));
     $('#tabelaMargem').addEventListener('click', e => {

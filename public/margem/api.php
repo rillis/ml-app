@@ -7,7 +7,7 @@ session_write_close(); // a busca no ML roda no ml-tools-web; aqui só repassa
 const MARGEM_PADRAO = 'http://192.168.15.11:51016';
 $base = rtrim(getenv('MARGEM_URL') ?: MARGEM_PADRAO, '/');
 
-$modulos = ['margem', 'skus'];
+$modulos = ['margem', 'skus', 'mudanca'];
 $tabelas = ['precos', 'apelidos'];
 $modulo = $_GET['modulo'] ?? '';
 $nome = $_GET['nome'] ?? '';
@@ -62,6 +62,8 @@ $rotas = [
     'simular'         => ['POST', '/api/simular'],
     'frete_divergente' => ['GET', '/api/frete-divergente'],
     'clonar'          => ['GET', '/api/clonar'],
+    'mudanca'         => ['GET', '/api/mudanca'],
+    'mudanca_planilha' => ['POST', '/api/mudanca/planilha', 'arquivo'],
     'clonar_andamento' => ['GET', '/api/clonar/andamento'],
     'clonar_gtin'     => ['GET', '/api/clonar/gtin'],
     'tabelas'         => ['GET', '/api/tabelas'],

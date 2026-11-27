@@ -33,6 +33,7 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
             <button type="button" data-aba="margem">💲 Margem</button>
             <button type="button" data-aba="simulador">🧪 Simulador</button>
             <button type="button" data-aba="clonar">🧬 Clonar</button>
+            <button type="button" data-aba="mudanca">📝 Mudança</button>
             <button type="button" data-aba="skus">🔍 SKUs</button>
             <button type="button" data-aba="envio">📦 Envio</button>
             <button type="button" data-aba="tabelas">📄 Tabelas</button>
@@ -363,6 +364,77 @@ $classeTh = 'font-medium py-2 px-2 sm:px-3 cursor-pointer select-none hover:text
                     <button type="button" id="btnGtinCorrigir" class="<?= $classePrimario ?> job">🔧 Corrigir</button>
                 </div>
             </div>
+        </div>
+
+        <!-- ===== MUDANÇA EM MASSA (planilha) ===== -->
+        <div data-secao="mudanca" class="hidden">
+            <section class="<?= $classeCartao ?>">
+                <h2 class="text-lg font-semibold text-gray-200">1. Baixar a planilha</h2>
+                <p class="text-sm text-gray-400 mt-1">Como no painel do ML: escolha os anúncios e as colunas, baixe, edite as colunas verdes (status e preço por anúncio; SKU, estoque local e prazo por produto) e envie de volta. Coluna desmarcada não vai para a planilha e não é comparada.</p>
+                <div class="flex flex-wrap gap-x-8 gap-y-3 mt-4" id="filtrosMudanca">
+                    <fieldset><legend class="text-xs uppercase tracking-wide text-gray-500 mb-1">Status</legend>
+                        <div class="flex flex-wrap gap-3">
+                            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="status" value="active" checked class="w-4 h-4 accent-blue-500"> Ativo</label>
+                            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="status" value="paused" checked class="w-4 h-4 accent-blue-500"> Pausado</label>
+                            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="status" value="under_review" checked class="w-4 h-4 accent-blue-500"> Em revisão</label>
+                            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="status" value="inactive" checked class="w-4 h-4 accent-blue-500"> Inativo</label>
+                        </div></fieldset>
+                    <fieldset><legend class="text-xs uppercase tracking-wide text-gray-500 mb-1">Tipo</legend>
+                        <div class="flex flex-wrap gap-3">
+                            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="tipos" value="gold_special" checked class="w-4 h-4 accent-blue-500"> Clássico</label>
+                            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="tipos" value="gold_pro" checked class="w-4 h-4 accent-blue-500"> Premium</label>
+                        </div></fieldset>
+                    <fieldset><legend class="text-xs uppercase tracking-wide text-gray-500 mb-1">Envio</legend>
+                        <div class="flex flex-wrap gap-3">
+                            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="envios" value="full" checked class="w-4 h-4 accent-blue-500"> Full</label>
+                            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="envios" value="normal" checked class="w-4 h-4 accent-blue-500"> Normal</label>
+                        </div></fieldset>
+                </div>
+                <div class="flex flex-wrap gap-x-8 gap-y-3 mt-4">
+                    <fieldset><legend class="text-xs uppercase tracking-wide text-gray-500 mb-1">Colunas não alteráveis <span class="normal-case tracking-normal">(só consulta)</span></legend>
+                        <div class="flex flex-wrap gap-3" id="colunasMudancaFixas"><label class="flex items-center gap-1.5 text-sm text-gray-500" title="Sempre vai: liga a linha ao anúncio"><input type="checkbox" checked disabled class="w-4 h-4 accent-blue-500"> ID (MLB)</label> <label class="flex items-center gap-1.5 text-sm text-gray-500" title="Sempre vai: liga a linha ao produto"><input type="checkbox" checked disabled class="w-4 h-4 accent-blue-500"> Produto (aba Produtos)</label> <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="colunas" value="up" checked class="w-4 h-4 accent-blue-500"> Produto (aba Anúncios)</label> <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer" title="O SKU do produto, só para consulta na aba Anúncios"><input type="checkbox" name="colunas" value="sku_ref" checked class="w-4 h-4 accent-blue-500"> SKU (aba Anúncios)</label> <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="colunas" value="titulo" checked class="w-4 h-4 accent-blue-500"> Título</label> <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="colunas" value="tipo" checked class="w-4 h-4 accent-blue-500"> Tipo</label> <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="colunas" value="full" checked class="w-4 h-4 accent-blue-500"> Full</label> <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="colunas" value="anuncios" checked class="w-4 h-4 accent-blue-500"> Anúncios do produto</label> <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" name="colunas" value="estoque_full" checked class="w-4 h-4 accent-blue-500"> Estoque Full</label></div></fieldset>
+                    <fieldset><legend class="text-xs uppercase tracking-wide text-emerald-400 mb-1">Colunas alteráveis</legend>
+                        <div class="flex flex-wrap gap-3"><label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer" title="Ativo ou Pausado (aba Anúncios)"><input type="checkbox" name="colunas" value="status" checked class="w-4 h-4 accent-blue-500"> Status</label> <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer" title="Por anúncio (aba Anúncios)"><input type="checkbox" name="colunas" value="preco" checked class="w-4 h-4 accent-blue-500"> Preço</label> <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer" title="Por produto (aba Produtos)"><input type="checkbox" name="colunas" value="sku" checked class="w-4 h-4 accent-blue-500"> SKU</label> <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer" title="Por produto (aba Produtos)"><input type="checkbox" name="colunas" value="estoque_local" checked class="w-4 h-4 accent-blue-500"> Estoque local</label> <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer" title="Dias de disponibilidade, por produto (aba Produtos)"><input type="checkbox" name="colunas" value="prazo" checked class="w-4 h-4 accent-blue-500"> Prazo</label></div></fieldset>
+                </div>
+                <div class="flex flex-wrap items-center gap-3 mt-4">
+                    <button id="btnMudancaBaixar" type="button" class="<?= $classePrimario ?> job" title="Só lê o ML (cerca de 1 requisição a cada 20 anúncios)">⬇️ Gerar planilha</button>
+                    <span id="infoMudancaDownload" class="text-sm text-gray-400"></span>
+                </div>
+            </section>
+
+            <section class="<?= $classeCartao ?>">
+                <h2 class="text-lg font-semibold text-gray-200">2. Enviar a planilha editada</h2>
+                <p class="text-sm text-gray-400 mt-1">Mostra as diferenças antes de gravar. Nada vai para o ML até você clicar em Aplicar.</p>
+                <form id="formMudanca" class="flex flex-wrap items-center gap-3 mt-4">
+                    <input id="arquivoMudanca" type="file" accept=".xlsx" class="text-sm text-gray-300 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-gray-700 file:text-gray-100 file:font-semibold hover:file:bg-gray-600">
+                    <button type="submit" class="<?= $classeBotao ?>">🔍 Comparar</button>
+                </form>
+            </section>
+
+            <section id="secaoPlanoMudanca" class="<?= $classeCartao ?> hidden">
+                <div class="flex flex-wrap justify-between items-start gap-3">
+                    <div>
+                        <h2 class="text-lg font-semibold text-gray-200">3. Diferenças</h2>
+                        <p id="infoPlanoMudanca" class="text-sm text-gray-400 mt-1"></p>
+                    </div>
+                    <button id="btnMudancaAplicar" type="button" class="<?= $classePrimario ?> job">✅ Aplicar</button>
+                </div>
+                <div id="errosMudanca" class="mt-3 empty:hidden space-y-1"></div>
+                <div class="overflow-x-auto mt-3">
+                    <table class="w-full text-sm">
+                        <thead class="text-gray-400 border-b border-gray-700">
+                            <tr>
+                                <th class="text-left font-medium py-2 pr-3">Anúncio / produto</th>
+                                <th class="text-left font-medium py-2 px-2 sm:px-3">Campo</th>
+                                <th class="text-right font-medium py-2 px-2 sm:px-3">Antes</th>
+                                <th class="text-right font-medium py-2 px-2 sm:px-3">Depois</th>
+                                <th class="text-right font-medium py-2 pl-2 sm:pl-3">Resultado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabelaMudanca"></tbody>
+                    </table>
+                </div>
+            </section>
         </div>
 
         <!-- ===== SKUS ===== -->
