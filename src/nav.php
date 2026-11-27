@@ -4,6 +4,7 @@ $modulos = [
     '/dash/'    => ['📱', 'Dash'],
     '/vendas/'  => ['💰', 'Vendas'],
     '/full/'    => ['🚚', 'Full'],
+    '/ferias/'  => ['🏖️', 'Férias'],
     '/margem/'  => ['📈', 'Margem'],
     '/boletos/' => ['📑', 'Boletos'],
     '/estoque/' => ['📦', 'Estoque'],

@@ -12,6 +12,7 @@ PHP 8.2 + Apache, MySQL via PDO e Tailwind embutido (`public/assets/tailwind.js`
 | `/boletos/` | Cadastro de boletos (com leitura de PDF via pdf.js), vencimento ajustado a feriados, insights. No PC, cada boleto tem um botão que mostra a linha digitável em QR code (qrcode-generator, em `public/boletos/vendor/qrcode`) para ler com o celular e colar no app do banco | `ml_boletos` |
 | `/vendas/` | Vendas do ML copiadas para o banco: comparativo entre períodos (datas livres, padrão mês até hoje; contra o período anterior, o período anterior em dias úteis ou o mesmo período do ano passado), faturamento por mês (Full × normal), acumulado do período, Premium × Clássico, faturamento por dia da semana, cancelamentos por mês, tabela por SKU e anúncios que não existem mais (com os equivalentes de hoje). Canceladas ficam fora das outras visões | `ml_vendas` (esquema em `sql/ml_vendas.sql`) |
 | `/full/` | Estoque dos anúncios no Full e sugestão de envio: quando criar o próximo envio e quanto mandar de cada anúncio, pelo ciclo escolhido | `ml_vendas` (tabelas `full_*`), `ml_estoque` |
+| `/ferias/` | Modo férias sem pausar anúncios: prazo de disponibilidade com contagem regressiva em todos os anúncios que não são Full, mudando sozinho a cada meia-noite até sair | `ml_vendas` (tabelas `ferias*`) |
 | `/margem/` | Custo, margem e preço sugerido de cada anúncio, comparador de SKUs da tabela com os anúncios, somador do PDF de envio do Full e as tabelas de preço e apelidos. Tudo roda no ml-tools-web, em container próprio; o `api.php` repassa as chamadas para ele (`MARGEM_URL`, padrão `http://192.168.15.11:51016`) | — |
 | `/estoque/` | Estoque local por SKU, com histórico (a lista de SKUs vem de `src/estoque/sku.csv`) | `ml_estoque` |
 | `/etiquetas/` | Vendas aguardando NF e prontas para imprimir; processa em lote (NF-e, DANFEs, etiquetas e mensagem) pelo serviço ml-etiquetas-web, que roda em container próprio. O `api.php` repassa as chamadas para ele (`ETIQUETAS_URL`, padrão `http://192.168.15.11:51015`) | — |
@@ -84,6 +85,36 @@ Criar as tabelas em um banco que já existe:
 ```bash
 mysql < sql/migracoes/2026-11-17-full-estoque.sql
 mysql < sql/migracoes/2026-11-18-anuncios-extintos.sql
+```
+
+## Férias (`/ferias/`)
+
+O modo férias do ML pausa os anúncios, e isso derruba a relevância. Esta aba faz outra coisa: coloca prazo de disponibilidade (`MANUFACTURING_TIME`) em todos os anúncios ativos e pausados que não são Full, e o prazo cai 1 por dia. Exemplo: férias de 10 dias começando dia 1 → prazo 10 no dia 1, 6 no dia 5, 1 no dia 10; no dia 11 o prazo sai e as férias terminam.
+
+- Início hoje (grava na hora) ou agendado para um dia futuro (começa na rodada da meia-noite). Máximo de 60 dias (limite do ML).
+- Dá para alterar os dias (a contagem continua do início), encerrar antes (tira o prazo na hora) ou cancelar as agendadas.
+- O prazo vale para o user product: um `PUT` por produto muda juntos os anúncios ligados (Clássico e Premium). Produtos ligados a anúncio Full ou com Flex ficam de fora.
+- Produto que já tinha prazo antes das férias fica com o maior dos dois e volta ao prazo original no fim.
+- Anúncios novos entram na rodada do dia seguinte.
+
+A rodada fica em `src/ferias/rodada.php` e roda como root no container (o `tokens.json` do `ml-jrf` só é lido pelo dono). O cron do host chama de hora em hora; ela só trabalha quando o prazo do dia ainda não foi gravado. Se algum produto falhar, tenta de novo nas horas seguintes, até 4 rodadas por dia. Os botões da tela disparam a rodada em segundo plano e a tela mostra o progresso.
+
+```
+5 * * * * docker exec ml-app php /var/www/html/src/ferias/rodada.php >> /home/rillis/docker/ml-app/logs/ferias.log 2>&1
+```
+
+Cada rodada manda um resumo no Discord (`FERIAS_DISCORD_WEBHOOK`); o cargo `FERIAS_DISCORD_MENCAO` só é marcado quando há falha ou a rodada não conseguiu rodar.
+
+Teste num produto só, fingindo a data (não grava rodada, não muda o status das férias e não avisa no Discord):
+
+```bash
+docker exec ml-app php /var/www/html/src/ferias/rodada.php --so=MLB123,MLB456 --hoje=2026-12-01
+```
+
+Criar as tabelas:
+
+```bash
+mysql < sql/migracoes/2026-11-27-ferias.sql
 ```
 
 ## Níveis de alerta dos boletos
