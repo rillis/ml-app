@@ -146,7 +146,14 @@ function dash_reclamacoes(array &$motivos, array &$pedidos): array
         $motivoId = $c['reason_id'] ?? '';
         if ($motivoId !== '' && !isset($motivos[$motivoId])) {
             try {
-                $motivos[$motivoId] = vendas_get('/post-purchase/v1/claims/reasons/' . rawurlencode($motivoId))['detail'] ?? $motivoId;
+                // Motivos são em árvore: o filho sozinho pode ser só "Chegou bem"; o pai diz o problema
+                $m = vendas_get('/post-purchase/v1/claims/reasons/' . rawurlencode($motivoId));
+                $texto = $m['detail'] ?? $motivoId;
+                if (!empty($m['parent_id'])) {
+                    $pai = vendas_get('/post-purchase/v1/claims/reasons/' . rawurlencode($m['parent_id']))['detail'] ?? '';
+                    $texto = $pai !== '' ? $pai . ' (' . mb_strtolower($texto) . ')' : $texto;
+                }
+                $motivos[$motivoId] = $texto;
             } catch (Throwable $e) {
                 $motivos[$motivoId] = $motivoId;
             }
@@ -189,7 +196,9 @@ function dash_reclamacoes(array &$motivos, array &$pedidos): array
             'atualizada' => $c['last_updated'] ?? null,
             'acoes'      => $acoes,
             'prazo'      => $prazo,
-            'precisa'    => $obrigatoria || $prazo !== null || $mediacao,
+            'full'       => !empty($c['fulfilled']),
+            // Mediação sem nenhuma ação disponível para o vendedor (ex.: Full) fica com o ML: só acompanhar
+            'precisa'    => $obrigatoria || $prazo !== null || ($mediacao && $acoes),
             'devolucao'  => $devolucao,
             'link'       => $pedido
                 ? 'https://www.mercadolivre.com.br/vendas/' . $pedido . '/detalhe'
@@ -252,7 +261,7 @@ function dash_ml_dados(bool $forcar = false): array
             return $cache['dados'] + ['cache' => true];
         }
         $itens = $cache['itens'] ?? [];
-        $motivos = $cache['motivos'] ?? [];
+        $motivos = $cache['motivos_v2'] ?? [];
         $pedidos = $cache['pedidos'] ?? [];
         $anterior = $cache['dados'] ?? [];
         $dados = ['quando' => date('c')];
@@ -276,7 +285,7 @@ function dash_ml_dados(bool $forcar = false): array
         // Memórias limitadas: anúncios e pedidos mais recentes bastam
         $itens = array_slice($itens, -200, null, true);
         $pedidos = array_slice($pedidos, -100, null, true);
-        fwrite($fp, json_encode(['quando' => time(), 'dados' => $dados, 'itens' => $itens, 'motivos' => $motivos, 'pedidos' => $pedidos], JSON_UNESCAPED_UNICODE));
+        fwrite($fp, json_encode(['quando' => time(), 'dados' => $dados, 'itens' => $itens, 'motivos_v2' => $motivos, 'pedidos' => $pedidos], JSON_UNESCAPED_UNICODE));
         return $dados;
     } finally {
         flock($fp, LOCK_UN);

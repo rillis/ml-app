@@ -98,6 +98,7 @@ const TOM_KPI = {
     ok: ['border-emerald-600', 'text-emerald-300'],
     alerta: ['border-amber-600', 'text-amber-300'],
     perigo: ['border-red-600', 'text-red-300'],
+    laranja: ['border-orange-600', 'text-orange-300'], // boleto urgente (mesmas cores da aba Boletos)
 };
 // Farol dos quatro primeiros cards: verde = nada para fazer, vermelho = algo esperando, amarelo = não deu para consultar
 const FAROL = { ok: '🟢', perigo: '🔴', alerta: '🟡' };
@@ -128,7 +129,7 @@ function desenharKpis() {
             const pior = ['critico', 'urgente', 'atencao', 'ok'].find((n) => b.some((x) => x.nivel === n));
             const prox = b[0];
             kpi('boletos', 'Boletos (15 dias)', brlCurto(b.reduce((s, x) => s + x.valor, 0)),
-                `${b.length} · próximo ${prox.prazo}`, { critico: 'perigo', urgente: 'perigo', atencao: 'alerta', ok: 'normal' }[pior]);
+                `${b.length} · próximo ${prox.prazo}`, { critico: 'perigo', urgente: 'laranja', atencao: 'alerta', ok: 'ok' }[pior]);
         }
 
         const f = banco.fila;
@@ -205,7 +206,7 @@ function desenharPrecisa() {
     $('#reclamacoes').replaceChildren(...(r.lista && r.lista.length
         ? r.lista.map((c) => linhaClicavel([
             el('div', { class: 'min-w-0 flex-1' },
-                el('div', { class: 'text-sm text-gray-100 truncate' }, `${c.tipo}${c.mediacao ? ' em mediação' : ''} · ${(c.itens || []).join(' + ') || 'venda ' + (c.pedido || '')}`),
+                el('div', { class: 'text-sm text-gray-100 truncate' }, `${c.tipo}${c.mediacao ? ' em mediação' : ''}${c.full ? ' · Full' : ''} · ${(c.itens || []).join(' + ') || 'venda ' + (c.pedido || '')}`),
                 el('div', { class: 'text-xs text-gray-400 truncate' }, [c.devolucao, c.motivo].filter(Boolean).join(' · '))),
             c.precisa
                 ? el('span', { class: `${TAG} ${COR.perigo}` }, c.prazo ? 'até ' + dataCurta(c.prazo) : 'ação sua')
@@ -393,9 +394,12 @@ function modalPergunta(q) {
 }
 
 function modalReclamacao(c) {
-    abrirModal(`${c.tipo}${c.mediacao ? ' em mediação' : ''} · venda ${c.pedido || ''}`, [
-        c.precisa ? el('p', { class: `${COR.perigo} rounded-lg px-3 py-2 text-sm mb-3` },
-            c.mediacao ? 'Em mediação com o Mercado Livre.' : 'O Mercado Livre espera uma ação sua' + (c.prazo ? ` até ${new Date(c.prazo).toLocaleString('pt-BR')}.` : '.')) : null,
+    abrirModal(`${c.tipo}${c.mediacao ? ' em mediação' : ''}${c.full ? ' · Full' : ''} · venda ${c.pedido || ''}`, [
+        c.precisa
+            ? el('p', { class: `${COR.perigo} rounded-lg px-3 py-2 text-sm mb-3` },
+                'O Mercado Livre espera uma ação sua' + (c.prazo ? ` até ${new Date(c.prazo).toLocaleString('pt-BR')}.` : '.'))
+            : el('p', { class: `${COR.neutro} rounded-lg px-3 py-2 text-sm mb-3` },
+                c.mediacao ? 'Em mediação com o Mercado Livre. Nenhuma ação sua disponível agora.' : 'Nenhuma ação sua disponível agora.'),
         campo('Motivo', c.motivo),
         campo('Itens', (c.itens || []).join(' + ')),
         campo('Comprador', c.comprador),
