@@ -39,11 +39,23 @@ function ferias_atual(PDO $pdo): ?array
     return $f ?: null;
 }
 
-function ler_dias(): int
+function ler_data(string $campo): ?string
 {
-    $dias = filter_var($_POST['dias'] ?? null, FILTER_VALIDATE_INT);
-    if ($dias === false || $dias < 1 || $dias > MAX_DIAS) {
-        responder(['error' => 'Informe de 1 a ' . MAX_DIAS . ' dias (máximo do ML).'], 400);
+    $texto = (string) ($_POST[$campo] ?? '');
+    $data = DateTime::createFromFormat('!Y-m-d', $texto);
+    return $data && $data->format('Y-m-d') === $texto ? $texto : null;
+}
+
+// Dias de prazo no início: do início ao dia final (o último dia fora, com prazo 1), contando os dois
+function ler_dias(string $inicio): int
+{
+    $fim = ler_data('fim');
+    if ($fim === null || $fim < $inicio) {
+        responder(['error' => 'Dia final inválido (igual ou depois do início).'], 400);
+    }
+    $dias = (int) (new DateTime($inicio))->diff(new DateTime($fim))->format('%a') + 1;
+    if ($dias > MAX_DIAS) {
+        responder(['error' => 'No máximo ' . MAX_DIAS . ' dias contando o início (limite do ML).'], 400);
     }
     return $dias;
 }
@@ -88,12 +100,11 @@ if ($action === 'ativar') {
     if (ferias_atual($pdo)) {
         responder(['error' => 'Já existem férias em andamento. Encerre ou cancele antes.'], 409);
     }
-    $inicio = (string) ($_POST['inicio'] ?? '');
-    $data = DateTime::createFromFormat('!Y-m-d', $inicio);
-    if (!$data || $data->format('Y-m-d') !== $inicio || $inicio < hoje()) {
+    $inicio = ler_data('inicio');
+    if ($inicio === null || $inicio < hoje()) {
         responder(['error' => 'Data de início inválida (hoje ou depois).'], 400);
     }
-    $dias = ler_dias();
+    $dias = ler_dias($inicio);
     $pdo->prepare("INSERT INTO ferias (inicio, dias, status, criada_em) VALUES (?, ?, 'agendada', ?)")->execute([$inicio, $dias, agora()]);
     if ($inicio === hoje()) {
         disparar_rodada();
@@ -101,13 +112,17 @@ if ($action === 'ativar') {
     responder(['ok' => true, 'rodando' => $inicio === hoje()]);
 }
 
-/* ===== ALTERAR: muda a quantidade de dias (a contagem continua do início) ===== */
+/* ===== ALTERAR: muda o dia final (a contagem continua do início) ===== */
 if ($action === 'alterar') {
     $f = ferias_atual($pdo);
     if (!$f || $f['status'] === 'encerrando') {
         responder(['error' => 'Nenhuma férias para alterar.'], 409);
     }
-    $dias = ler_dias();
+    $dias = ler_dias($f['inicio']);
+    // Ativa: o dia final não pode ficar no passado (para tirar o prazo hoje existe o Encerrar)
+    if ($f['status'] === 'ativa' && (new DateTime($f['inicio']))->modify('+' . ($dias - 1) . ' days')->format('Y-m-d') < hoje()) {
+        responder(['error' => 'O dia final precisa ser hoje ou depois. Para tirar o prazo agora, use Encerrar agora.'], 400);
+    }
     $pdo->prepare('UPDATE ferias SET dias = ? WHERE id = ?')->execute([$dias, $f['id']]);
     $rodando = $f['status'] === 'ativa';
     if ($rodando) {

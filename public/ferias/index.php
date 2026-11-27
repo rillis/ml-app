@@ -25,7 +25,7 @@ $classeBotao = 'bg-gray-900 hover:bg-gray-700 border border-gray-700 hover:borde
             <span id="statusTopo" class="text-sm text-gray-400"></span>
         </header>
 
-        <p class="text-xs text-gray-500 mb-6">Em vez de pausar os anúncios (modo férias do ML), coloca prazo de disponibilidade em todos os anúncios ativos e pausados que não são Full, com contagem regressiva: no dia do início o prazo é o total de dias e cai 1 a cada meia-noite. No dia da volta o prazo sai e as férias terminam. O prazo vale para o produto: anúncios ligados (Clássico e Premium) mudam juntos. Produtos ligados a um anúncio Full ou com Flex ficam de fora. Se um produto já tinha prazo maior, ele é mantido e volta ao original no fim. Anúncios novos entram na rodada do dia seguinte.</p>
+        <p class="text-xs text-gray-500 mb-6">Em vez de pausar os anúncios (modo férias do ML), coloca prazo de disponibilidade em todos os anúncios ativos e pausados que não são Full, com contagem regressiva: no dia do início o prazo é o total de dias até o dia final e cai 1 a cada meia-noite; no dia final o prazo é 1. No dia seguinte (a volta) o prazo sai e as férias terminam. O prazo vale para o produto: anúncios ligados (Clássico e Premium) mudam juntos. Produtos ligados a um anúncio Full ou com Flex ficam de fora. Se um produto já tinha prazo maior, ele é mantido e volta ao original no fim. Anúncios novos entram na rodada do dia seguinte.</p>
 
         <!-- Sem férias em andamento -->
         <section id="cartaoNovo" class="<?= $classeCartao ?> hidden">
@@ -34,8 +34,8 @@ $classeBotao = 'bg-gray-900 hover:bg-gray-700 border border-gray-700 hover:borde
                 <label class="text-sm text-gray-400 flex flex-col gap-1">Início
                     <input id="inicio" type="date" class="<?= $classeCampo ?> w-44" oninput="mostrarPrevia()">
                 </label>
-                <label class="text-sm text-gray-400 flex flex-col gap-1" title="Prazo no dia do início (máximo do ML: 60)">Dias
-                    <input id="dias" type="number" min="1" max="60" value="10" inputmode="numeric" class="<?= $classeCampo ?> w-28" oninput="mostrarPrevia()">
+                <label class="text-sm text-gray-400 flex flex-col gap-1" title="Último dia fora (prazo 1). O prazo sai no dia seguinte. Até 60 dias contando o início (máximo do ML).">Dia final
+                    <input id="fim" type="date" class="<?= $classeCampo ?> w-44" oninput="mostrarPrevia()">
                 </label>
                 <button id="btnAtivar" onclick="ativar()"
                         class="bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-wait text-white font-semibold py-2 px-4 rounded-lg transition-colors shadow-lg whitespace-nowrap">🏖️ Ativar férias</button>
@@ -53,11 +53,19 @@ $classeBotao = 'bg-gray-900 hover:bg-gray-700 border border-gray-700 hover:borde
                     <div id="atualDetalhe" class="text-sm text-gray-400 mt-1"></div>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    <button id="btnAlterar" onclick="alterar()" class="<?= $classeBotao ?>">✏️ Alterar dias</button>
+                    <button id="btnAlterar" onclick="alterar()" class="<?= $classeBotao ?>">✏️ Alterar dia final</button>
                     <button id="btnRodar" onclick="rodar()" class="<?= $classeBotao ?>" title="Confere e grava o prazo de hoje de novo (ex.: depois de falhas)">🔁 Rodar de novo</button>
                     <button id="btnEncerrar" onclick="encerrar()" class="bg-gray-900 hover:bg-red-900/40 border border-gray-700 hover:border-red-500 text-gray-300 hover:text-red-300 rounded-lg px-3 py-2 text-sm transition-colors disabled:opacity-60 disabled:cursor-wait">⏹️ Encerrar agora</button>
                 </div>
             </div>
+            <form id="formFim" class="hidden flex flex-wrap items-end gap-3 mb-4 p-3 bg-gray-900/60 border border-gray-700 rounded-lg" onsubmit="salvarFim(event)">
+                <label class="text-sm text-gray-400 flex flex-col gap-1">Novo dia final
+                    <input id="novoFim" type="date" class="<?= $classeCampo ?> w-44" oninput="mostrarNovoFim()">
+                </label>
+                <button id="btnSalvarFim" type="submit" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-wait text-white font-semibold py-2 px-4 rounded-lg transition-colors">Salvar</button>
+                <button type="button" onclick="fecharFim()" class="<?= $classeBotao ?>">Cancelar</button>
+                <p id="novoFimTexto" class="text-xs text-gray-400 w-full"></p>
+            </form>
             <div id="progresso" class="hidden mb-4">
                 <div class="flex justify-between text-xs text-gray-400 mb-1"><span id="progressoTexto"></span><span id="progressoNumero"></span></div>
                 <div class="h-2 bg-gray-900 rounded-full overflow-hidden"><div id="progressoBarra" class="h-full bg-blue-500 transition-all" style="width:0%"></div></div>
@@ -137,24 +145,34 @@ function chips(alvo, inicio, dias, hoje) {
     }).join('');
 }
 
-function lerDias() {
-    const v = parseInt(document.getElementById('dias').value, 10);
-    return Number.isInteger(v) && v >= 1 && v <= estado.maxDias ? v : null;
-}
+// Dias de prazo no início: do início ao dia final, contando os dois (no dia final o prazo é 1)
+const diasAte = (inicio, fim) => diasEntre(inicio, fim) + 1;
 
 function mostrarPrevia() {
     const inicio = document.getElementById('inicio').value;
-    const dias = lerDias();
+    const fim = document.getElementById('fim').value;
     const texto = document.getElementById('previaTexto');
     const previa = document.getElementById('previa');
-    if (!inicio || inicio < estado.hoje || !dias) {
-        texto.textContent = !dias ? `Informe de 1 a ${estado.maxDias} dias.` : 'Escolha um início de hoje em diante.';
-        previa.innerHTML = '';
-        return;
-    }
-    const volta = somarDias(inicio, dias);
-    texto.textContent = `${inicio === estado.hoje ? 'Começa agora' : 'Começa ' + dataSemana(inicio) + ' à meia-noite'} com ${plural(dias, 'dia', 'dias')} de prazo; o prazo sai ${dataSemana(volta)}.`;
+    previa.innerHTML = '';
+    if (!inicio || inicio < estado.hoje) { texto.textContent = 'Escolha um início de hoje em diante.'; return; }
+    if (!fim || fim < inicio) { texto.textContent = 'Escolha o dia final (o último dia fora), igual ou depois do início.'; return; }
+    const dias = diasAte(inicio, fim);
+    if (dias > estado.maxDias) { texto.textContent = `No máximo ${estado.maxDias} dias contando o início (limite do ML): dia final até ${dataSemana(somarDias(inicio, estado.maxDias - 1))}.`; return; }
+    texto.textContent = `${inicio === estado.hoje ? 'Começa agora' : 'Começa ' + dataSemana(inicio) + ' à meia-noite'} com ${plural(dias, 'dia', 'dias')} de prazo, até ${dataSemana(fim)}; o prazo sai ${dataSemana(somarDias(fim, 1))}.`;
     chips(previa, inicio, dias, estado.hoje);
+}
+
+function mostrarNovoFim() {
+    const f = estado.ferias;
+    const fim = document.getElementById('novoFim').value;
+    const texto = document.getElementById('novoFimTexto');
+    const minimo = f.status === 'agendada' ? f.inicio : estado.hoje;
+    if (!fim || fim < minimo) { texto.textContent = `Escolha um dia de ${dataSemana(minimo)} em diante. Para tirar o prazo hoje, use Encerrar agora.`; return null; }
+    const dias = diasAte(f.inicio, fim);
+    if (dias > estado.maxDias) { texto.textContent = `No máximo ${estado.maxDias} dias contando o início: dia final até ${dataSemana(somarDias(f.inicio, estado.maxDias - 1))}.`; return null; }
+    const hoje = f.status === 'agendada' ? null : dias - diasEntre(f.inicio, estado.hoje);
+    texto.textContent = `${plural(dias, 'dia', 'dias')} a partir de ${dataSemana(f.inicio)}; o prazo sai ${dataSemana(somarDias(fim, 1))}.` + (hoje ? ` Prazo de hoje passa a ${plural(hoje, 'dia', 'dias')}.` : '');
+    return fim;
 }
 
 function renderizar() {
@@ -172,6 +190,9 @@ function renderizar() {
         const entrada = document.getElementById('inicio');
         entrada.min = hoje;
         if (!entrada.value || entrada.value < hoje) entrada.value = hoje;
+        const fim = document.getElementById('fim');
+        fim.min = entrada.value;
+        if (!fim.value) fim.value = somarDias(entrada.value, 9);
         mostrarPrevia();
         if (f) topo.textContent = `Últimas férias: ${dataCurta(f.inicio)}, ${plural(+f.dias, 'dia', 'dias')} (${f.status})` + (ultima ? ` · ${topo.textContent}` : '');
     } else {
@@ -189,12 +210,13 @@ function renderizar() {
         document.getElementById('atualTitulo').textContent = f.status === 'agendada'
             ? `Começa ${dataSemana(f.inicio)} com ${plural(dias, 'dia', 'dias')}`
             : f.status === 'encerrando' ? 'Tirando o prazo dos anúncios' : `Prazo de hoje: ${plural(prazoHoje, 'dia', 'dias')}`;
-        const detalhe = [`Início ${dataSemana(f.inicio)}`, `${plural(dias, 'dia', 'dias')}`, `prazo sai ${dataSemana(volta)}`];
+        const detalhe = [`Início ${dataSemana(f.inicio)}`, `dia final ${dataSemana(somarDias(volta, -1))}`, `prazo sai ${dataSemana(volta)}`];
         if (resumo && resumo.produtos) detalhe.push(`${plural(resumo.com_prazo, 'produto', 'produtos')} com prazo agora`);
         document.getElementById('atualDetalhe').textContent = detalhe.join(' · ');
         chips(document.getElementById('contagem'), f.inicio, dias, hoje);
 
         document.getElementById('btnAlterar').classList.toggle('hidden', f.status === 'encerrando');
+        if (f.status === 'encerrando') fecharFim();
         document.getElementById('btnRodar').classList.toggle('hidden', f.status === 'agendada');
         document.getElementById('btnEncerrar').textContent = f.status === 'agendada' ? '✖️ Cancelar' : '⏹️ Encerrar agora';
         ['btnAlterar', 'btnRodar', 'btnEncerrar'].forEach(id => { document.getElementById(id).disabled = rodando && id === 'btnRodar'; });
@@ -271,30 +293,44 @@ async function comBotao(id, tarefa) {
 
 function ativar() {
     const inicio = document.getElementById('inicio').value;
-    const dias = lerDias();
-    if (!inicio || inicio < estado.hoje || !dias) { ML.toast('Confira o início e os dias.', 'aviso'); return; }
+    const fim = document.getElementById('fim').value;
+    const dias = inicio && fim ? diasAte(inicio, fim) : 0;
+    if (!inicio || inicio < estado.hoje || dias < 1 || dias > estado.maxDias) { ML.toast('Confira o início e o dia final.', 'aviso'); return; }
     comBotao('btnAtivar', async () => {
         const agora = inicio === estado.hoje;
         const ok = await ML.confirmar(
-            `${agora ? 'Agora' : 'Em ' + dataSemana(inicio)} todos os anúncios que não são Full recebem ${plural(dias, 'dia', 'dias')} de prazo de disponibilidade, caindo 1 por dia até sair em ${dataSemana(somarDias(inicio, dias))}. Os anúncios continuam ativos.`,
+            `${agora ? 'Agora' : 'Em ' + dataSemana(inicio)} todos os anúncios que não são Full recebem ${plural(dias, 'dia', 'dias')} de prazo de disponibilidade, caindo 1 por dia até 1 em ${dataSemana(fim)}; o prazo sai ${dataSemana(somarDias(fim, 1))}. Os anúncios continuam ativos.`,
             { titulo: 'Ativar férias', textoConfirmar: agora ? 'Ativar agora' : 'Agendar' });
         if (!ok) return;
-        await enviar('ativar', { inicio, dias });
+        await enviar('ativar', { inicio, fim });
         ML.toast(agora ? 'Férias ativadas: gravando o prazo nos anúncios.' : 'Férias agendadas.', 'sucesso');
     });
 }
 
 function alterar() {
-    comBotao('btnAlterar', async () => {
-        const f = estado.ferias;
-        const dias = await ML.perguntarQuantidade({
-            titulo: 'Alterar dias',
-            dica: `Hoje: ${plural(+f.dias, 'dia', 'dias')} a partir de ${dataSemana(f.inicio)}. A contagem continua do início: com N dias, o prazo sai em ${dataCurta(f.inicio)} + N. Máximo ${estado.maxDias}.`,
-            textoConfirmar: 'Salvar',
-        });
-        if (dias === null) return;
-        const r = await enviar('alterar', { dias });
-        ML.toast(r.rodando ? 'Dias alterados: gravando o prazo novo.' : 'Dias alterados.', 'sucesso');
+    const f = estado.ferias;
+    const form = document.getElementById('formFim');
+    const campo = document.getElementById('novoFim');
+    campo.min = f.status === 'agendada' ? f.inicio : estado.hoje;
+    campo.max = somarDias(f.inicio, estado.maxDias - 1);
+    campo.value = somarDias(f.inicio, +f.dias - 1);
+    form.classList.remove('hidden');
+    mostrarNovoFim();
+    campo.focus();
+}
+
+function fecharFim() {
+    document.getElementById('formFim').classList.add('hidden');
+}
+
+function salvarFim(e) {
+    e.preventDefault();
+    const fim = mostrarNovoFim();
+    if (!fim) return;
+    comBotao('btnSalvarFim', async () => {
+        const r = await enviar('alterar', { fim });
+        fecharFim();
+        ML.toast(r.rodando ? 'Dia final alterado: gravando o prazo novo.' : 'Dia final alterado.', 'sucesso');
     });
 }
 

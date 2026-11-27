@@ -89,10 +89,10 @@ mysql < sql/migracoes/2026-11-18-anuncios-extintos.sql
 
 ## Férias (`/ferias/`)
 
-O modo férias do ML pausa os anúncios, e isso derruba a relevância. Esta aba faz outra coisa: coloca prazo de disponibilidade (`MANUFACTURING_TIME`) em todos os anúncios ativos e pausados que não são Full, e o prazo cai 1 por dia. Exemplo: férias de 10 dias começando dia 1 → prazo 10 no dia 1, 6 no dia 5, 1 no dia 10; no dia 11 o prazo sai e as férias terminam.
+O modo férias do ML pausa os anúncios, e isso derruba a relevância. Esta aba faz outra coisa: coloca prazo de disponibilidade (`MANUFACTURING_TIME`) em todos os anúncios ativos e pausados que não são Full, e o prazo cai 1 por dia. Na tela você escolhe o dia inicial e o dia final (o último dia fora). Exemplo: do dia 1 ao dia 10 → prazo 10 no dia 1, 6 no dia 5, 1 no dia 10; no dia 11 o prazo sai e as férias terminam.
 
-- Início hoje (grava na hora) ou agendado para um dia futuro (começa na rodada da meia-noite). Máximo de 60 dias (limite do ML).
-- Dá para alterar os dias (a contagem continua do início), encerrar antes (tira o prazo na hora) ou cancelar as agendadas.
+- Início hoje (grava na hora) ou agendado para um dia futuro (começa na rodada da meia-noite). Máximo de 60 dias contando o início (limite do ML).
+- Dá para alterar o dia final (a contagem continua do início), encerrar antes (tira o prazo na hora) ou cancelar as agendadas.
 - O prazo vale para o user product: um `PUT` por produto muda juntos os anúncios ligados (Clássico e Premium). Produtos ligados a anúncio Full ou com Flex ficam de fora.
 - Produto que já tinha prazo antes das férias fica com o maior dos dois e volta ao prazo original no fim.
 - Anúncios novos entram na rodada do dia seguinte.
